@@ -8,7 +8,7 @@ by **oli4vr**
 A demo project exploring the capabilities of the modern terminal emulator:
 procedural texture generation, DDA raycasting, billboard sprites, and
 full-screen real-time animation — all rendered with Unicode block
-characters and xterm-256 colour in a standard terminal window.
+characters and xterm-256color in a standard terminal window.
 
 
 ## Prerequisites
