@@ -14,7 +14,7 @@ characters and xterm-256 colour in a standard terminal window.
 ## Demo video
 
 
-https://www.youtube.com/watch?v=tRDigq0ozcM
+https://youtu.be/dGW2X2p7s5I
 
 
 ## Prerequisites
