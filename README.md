@@ -10,6 +10,13 @@ procedural texture generation, DDA raycasting, billboard sprites, and
 full-screen real-time animation — all rendered with Unicode block
 characters and xterm-256 colour in a standard terminal window.
 
+
+## Demo video
+
+
+<iframe width="1806" height="706" src="https://www.youtube.com/embed/tRDigq0ozcM" title="3D raycasting game in the linux terminal" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+
 ## Prerequisites
 
 - **libncursesw** — the wide-character ncurses library (for Unicode support)
