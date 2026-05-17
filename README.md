@@ -1,5 +1,6 @@
 # maze3d — 2.5D Terminal Raycaster
 
+![Screenshot](screenshot.png)
 
 by **oli4vr**
 
