@@ -14,7 +14,7 @@ characters and xterm-256 colour in a standard terminal window.
 ## Demo video
 
 
-<iframe width="1806" height="706" src="https://www.youtube.com/embed/tRDigq0ozcM" title="3D raycasting game in the linux terminal" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+https://www.youtube.com/watch?v=tRDigq0ozcM
 
 
 ## Prerequisites
