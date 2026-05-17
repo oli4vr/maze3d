@@ -11,12 +11,6 @@ full-screen real-time animation — all rendered with Unicode block
 characters and xterm-256 colour in a standard terminal window.
 
 
-## Demo video
-
-
-https://youtu.be/dGW2X2p7s5I
-
-
 ## Prerequisites
 
 - **libncursesw** — the wide-character ncurses library (for Unicode support)
