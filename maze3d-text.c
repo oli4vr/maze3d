@@ -297,7 +297,8 @@ static void open_inventory_txt(void) {
         /* Rebuild visible list each iteration (counts change on use) */
         int vis_items[NUM_ITEM_TYPES], vis_count = 0;
         for (int i = 0; i < NUM_ITEM_TYPES; i++)
-            if (inventory[i] > 0) vis_items[vis_count++] = i;
+            if (inventory[i] > 0 && i != ITEM_SOULS) vis_items[vis_count++] = i;
+        if (inventory[ITEM_SOULS] > 0) vis_items[vis_count++] = ITEM_SOULS;
         int total = vis_count + 1; /* items + Back */
         if (selected >= total) selected = total - 1;
         printf("\n--- Inventory ---\n");

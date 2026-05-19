@@ -442,7 +442,8 @@ static void open_inventory_nc(void) {
     while (1) {
         int vis_items[NUM_ITEM_TYPES], vis_count = 0;
         for (int i = 0; i < NUM_ITEM_TYPES; i++)
-            if (inventory[i] > 0) vis_items[vis_count++] = i;
+            if (inventory[i] > 0 && i != ITEM_SOULS) vis_items[vis_count++] = i;
+        if (inventory[ITEM_SOULS] > 0) vis_items[vis_count++] = ITEM_SOULS;
         int total = vis_count + 1;
         if (selected >= total) selected = total - 1;
 
