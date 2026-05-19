@@ -26,7 +26,11 @@ static const char *item_desc(int v, int mx, int my) {
     if (v == MAP_WATER) return "a puddle of water";
     if (v == MAP_POTION) {
         int st = get_sprite_type_at(mx, my);
-        return (st == SPRITE_POTION_BLUE) ? "a blue potion" : "a green potion";
+        if (st == SPRITE_POTION_BLUE) return "a blue potion";
+        if (st == SPRITE_POTION_RED)  return "a red potion";
+        if (st == SPRITE_POTION_PINK) return "a pink potion";
+        if (st == SPRITE_POTION_GREEN) return "a green potion";
+        return "a potion";
     }
     return NULL;
 }
@@ -72,8 +76,10 @@ static void describe_view(void) {
     int rx = dy, ry = -dx;
     int bx = -dx, by = -dy;
 
-    printf("\n--- %s (Lvl %d, HP %d, WTR %d, Steps %d, Score %d) ---\n",
-           dir_name(p_dir), p_level, p_health, p_water, p_steps, get_current_score());
+    printf("\n--- %s (Lvl %d, HP %d, WTR %d, Steps %d, Score %d%s%s) ---\n",
+           dir_name(p_dir), p_level, p_health, p_water, p_steps, get_current_score(),
+           p_poisoned ? " [POISON]" : "",
+           p_spirit_turns > 0 ? " [SPIRIT]" : "");
 
     /* Check adjacent cell in front for immediate interaction */
     int fx = (int)player.x + dx, fy = (int)player.y + dy;
@@ -86,8 +92,12 @@ static void describe_view(void) {
             printf("  A puddle of water is at your feet, one step ahead\n");
         } else if (v == MAP_POTION) {
             int st = get_sprite_type_at(fx, fy);
-            printf("  A %s is one step ahead\n",
-                   st == SPRITE_POTION_BLUE ? "blue potion" : "green potion");
+            const char *pname = "potion";
+            if (st == SPRITE_POTION_BLUE) pname = "blue potion";
+            else if (st == SPRITE_POTION_RED) pname = "red potion";
+            else if (st == SPRITE_POTION_PINK) pname = "pink potion";
+            else if (st == SPRITE_POTION_GREEN) pname = "green potion";
+            printf("  A %s is one step ahead\n", pname);
         } else if (v >= 1 && v % 5 == 0) {
             printf("  A skull wall is directly ahead — the exit!\n");
         } else if (v >= 1 && v <= NUM_TEX) {
@@ -136,15 +146,21 @@ static int do_move(int dx, int dy) {
     int old_sp = (old_v == MAP_POTION) ? get_sprite_type_at(cx, cy) : -1;
     consume_item(cx, cy);
     if (flash_type) {
+        const char *iname = NULL;
         if (old_v == MAP_WATER)
-            printf("  Refreshing water!\n");
-        else if (old_v == MAP_POTION)
-            printf("  Acquired a %s!\n",
-                   old_sp == SPRITE_POTION_BLUE ? "Bottle of Water" : "Healing Potion");
+            iname = "refreshing water";
+        else if (old_v == MAP_POTION) {
+            if (old_sp == SPRITE_POTION_BLUE) iname = "Bottle of Water";
+            else if (old_sp == SPRITE_POTION_RED) iname = "Healing Potion";
+            else if (old_sp == SPRITE_POTION_PINK) iname = "Spirit 'o Luck";
+            else if (old_sp == SPRITE_POTION_GREEN) iname = "Antidote";
+        }
+        if (iname) printf("  Acquired a %s!\n", iname);
         flash_type = 0;
     }
     if (end_turn()) {
-        printf("  You have died of thirst!\n");
+        printf("  You have died%s!\n", p_poisoned ? " of poison" : " of thirst");
+        p_poisoned = 0; /* reset for potential restart */
         running = 0;
         return 1;
     }
@@ -187,9 +203,14 @@ static int do_attack(void) {
             if (flash_type) {
                 if (was_water)
                     printf("  You drink water — refreshing!\n");
-                else
-                    printf("  Acquired a %s!\n",
-                           old_sp == SPRITE_POTION_BLUE ? "Bottle of Water" : "Healing Potion");
+                else {
+                    const char *iname = "potion";
+                    if (old_sp == SPRITE_POTION_BLUE) iname = "Bottle of Water";
+                    else if (old_sp == SPRITE_POTION_RED) iname = "Healing Potion";
+                    else if (old_sp == SPRITE_POTION_PINK) iname = "Spirit 'o Luck";
+                    else if (old_sp == SPRITE_POTION_GREEN) iname = "Antidote";
+                    printf("  Acquired a %s!\n", iname);
+                }
                 flash_type = 0;
             }
             return 1;
@@ -209,6 +230,7 @@ static int do_attack(void) {
         printf("  You have been slain!\n");
         running = 0;
     }
+    if (p_poisoned) printf("  You are poisoned!\n");
     return 1;
 }
 

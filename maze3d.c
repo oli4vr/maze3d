@@ -280,9 +280,15 @@ static void draw_panel(void) {
     mvaddstr(py + 2, 0, buf);
     snprintf(buf, sizeof(buf), " STA %d  END %d  LCK %d", p_stamina, p_endurance, p_luck);
     mvaddstr(py + 3, 0, buf);
-    snprintf(buf, sizeof(buf), " LEVEL %d   STEPS %d   SCORE %d", p_level, p_steps, get_current_score());
+    snprintf(buf, sizeof(buf), " LEVEL %d   STEPS %d   SCORE %d%s",
+             p_level, p_steps, get_current_score(),
+             p_poisoned ? " [POISON]" : "");
     mvaddstr(py + 4, 0, buf);
-    snprintf(buf, sizeof(buf), " Souls: %d", inventory[ITEM_SOULS]);
+    if (p_spirit_turns > 0) {
+        snprintf(buf, sizeof(buf), " Souls: %d  [Spirit: %dt]", inventory[ITEM_SOULS], p_spirit_turns);
+    } else {
+        snprintf(buf, sizeof(buf), " Souls: %d", inventory[ITEM_SOULS]);
+    }
     mvaddstr(py + 5, 0, buf);
 
     snprintf(buf, sizeof(buf), " [\xe2\x86\x90\xe2\x86\x91\xe2\x86\x92\xe2\x86\x93] Move   [SPC] Attack/Use");
@@ -868,10 +874,13 @@ static void drop_popup_nc(void) {
 
     /* Map item to sprite type */
     int sp_type;
-    if (item == ITEM_BOTTLE_OF_WATER)
-        sp_type = SPRITE_POTION_BLUE;
-    else
-        sp_type = SPRITE_POTION_GREEN;
+    switch (item) {
+        case ITEM_BOTTLE_OF_WATER: sp_type = SPRITE_POTION_BLUE; break;
+        case ITEM_HEALING_POTION:  sp_type = SPRITE_POTION_RED;  break;
+        case ITEM_SPIRIT_LUCK:     sp_type = SPRITE_POTION_PINK; break;
+        case ITEM_ANTIDOTE:        sp_type = SPRITE_POTION_GREEN; break;
+        default:                   sp_type = SPRITE_POTION_RED;  break;
+    }
 
     int rows, cols;
     getmaxyx(stdscr, rows, cols);

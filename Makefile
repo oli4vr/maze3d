@@ -12,14 +12,17 @@ gentex.o: gentex.c gentex.h
 enemies.o: enemies.c enemies.h engine.h
 	$(CC) $(CFLAGS) -c enemies.c
 
+enemy_sprite_data.o: enemy_sprite_data.c enemy_sprite_data.h
+	$(CC) $(CFLAGS) -c enemy_sprite_data.c
+
 gameplay.o: gameplay.c gameplay.h engine.h enemies.h
 	$(CC) $(CFLAGS) -c gameplay.c
 
 maze3d-text.o: maze3d-text.c gameplay.h engine.h enemies.h
 	$(CC) $(CFLAGS) -c maze3d-text.c $(LDLIBS)
 
-maze3d: maze3d.c maze3d-text.o engine.o gentex.o enemies.o gameplay.o
-	$(CC) $(CFLAGS) -o $@ maze3d.c maze3d-text.o engine.o gentex.o enemies.o gameplay.o $(LDLIBS)
+maze3d: maze3d.c maze3d-text.o engine.o gentex.o enemies.o gameplay.o enemy_sprite_data.o
+	$(CC) $(CFLAGS) -o $@ maze3d.c maze3d-text.o engine.o gentex.o enemies.o gameplay.o enemy_sprite_data.o $(LDLIBS)
 
 clean:
 	rm -f maze3d *.o

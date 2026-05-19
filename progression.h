@@ -127,6 +127,15 @@
     ( (MAX_ITEM_STACK + ((sta) + (end)) / 3) < 30           \
       ? (MAX_ITEM_STACK + ((sta) + (end)) / 3) : 30 )
 
+/* ── Spirit 'o Luck ──────────────────────────────────────────── */
+/* Duration = 2 + (luck >> 3) turns */
+#define SPIRIT_DURATION(luck)  (2 + ((luck) >> 3))
+
+/* ── Poison ───────────────────────────────────────────────────── */
+/* HP loss per forward/backward step while poisoned */
+#define POISON_TICK_MIN  1
+#define POISON_TICK_MAX  2
+
 /* ── End turn costs (thirst) ──────────────────────────────────── */
 #define TURN_WATER_COST       4
 #define TURN_HP_DRAIN         2    /* when water == 0 */

@@ -16,6 +16,11 @@ int flash_type = 0;
 int exit_x, exit_y;
 int game_won = 0;
 
+/* ── Status effects ──────────────────────────────────────────── */
+int p_poisoned = 0;
+int p_spirit_turns = 0;
+int move_was_step = 0;
+
 /* ── Player RPG stats ────────────────────────────────────────── */
 int p_attack, p_defense, p_toughness;
 int p_endurance, p_stamina, p_luck;
@@ -40,13 +45,15 @@ const consumable item_defs[NUM_ITEM_TYPES] = {
     { ITEM_HEALING_POTION, "Healing Potion",       "Use",   POTION_HP_BASE,       0, POTION_HP_RANDOM,   POTION_WATER_RANDOM },
     { ITEM_BOTTLE_OF_WATER, "Bottle of Water",     "Drink", 0, WATER_BOTTLE_WATER_BASE, WATER_BOTTLE_HP_RANDOM, WATER_BOTTLE_WATER_RANDOM },
     { ITEM_SOULS,          "Souls",               "Consume",   0, 0, 0, 0 },
+    { ITEM_SPIRIT_LUCK,    "Spirit 'o Luck",       "Use",   0, 0, 10, 10 },
+    { ITEM_ANTIDOTE,       "Antidote",             "Use",   0, 0, 10, 10 },
 };
 
 int sprite_to_item_map[NUM_SPRITE_TYPES] = {
     [SPRITE_POTION_BLUE]  = ITEM_BOTTLE_OF_WATER,
-    [SPRITE_POTION_GREEN] = ITEM_HEALING_POTION,
+    [SPRITE_POTION_GREEN] = ITEM_ANTIDOTE,
     [SPRITE_POTION_RED]   = ITEM_HEALING_POTION,
-    [SPRITE_POTION_PINK]  = ITEM_HEALING_POTION,
+    [SPRITE_POTION_PINK]  = ITEM_SPIRIT_LUCK,
 };
 
 /* ── Monster stat table ──────────────────────────────────────── */
@@ -259,8 +266,12 @@ void attack_enemy(int fx, int fy) {
     const MonsterStats *m = &monster_stats[etype];
     const char *ename = enemy_info[etype].name;
 
+    /* Apply Spirit 'o Luck buff: double luck and defense */
+    int eff_luck = p_spirit_turns > 0 ? p_luck * 2 : p_luck;
+    int eff_def  = p_spirit_turns > 0 ? p_defense * 2 : p_defense;
+
     /* --- Player attacks enemy --- */
-    int lck_mod = p_luck - m->luck;
+    int lck_mod = eff_luck - m->luck;
     if (lck_mod < -3) lck_mod = -3;
     if (lck_mod > 3) lck_mod = 3;
     int tohit = p_attack + (rand() % 9) + lck_mod;
@@ -281,10 +292,20 @@ void attack_enemy(int fx, int fy) {
             log_msg("Thou hast vanquished the %s! +%d souls", ename, souls);
             p_score += souls * 5;
             /* Drop chance: 25% + luck, capped at 50% */
-            int drop_chance = 25 + p_luck;
+            int drop_chance = 25 + eff_luck;
             if (drop_chance > 50) drop_chance = 50;
             if ((rand() % 100) < drop_chance) {
-                int item = (rand() % 2) ? ITEM_HEALING_POTION : ITEM_BOTTLE_OF_WATER;
+                int item;
+                int dr = rand() % 100;
+                if (dr < 40) {
+                    item = ITEM_HEALING_POTION;
+                } else if (dr < 80) {
+                    item = ITEM_BOTTLE_OF_WATER;
+                } else if (dr < 90) {
+                    item = ITEM_SPIRIT_LUCK;
+                } else {
+                    item = (p_level >= 9) ? ITEM_ANTIDOTE : ITEM_SPIRIT_LUCK;
+                }
                 if (inventory[item] < ITEM_MAX_STACK(p_stamina, p_endurance)) {
                     inventory[item]++;
                     log_msg("%s hath dropped a %s", ename, item_defs[item].name);
@@ -302,22 +323,33 @@ void attack_enemy(int fx, int fy) {
                     int edmg = e_atk + (e_atk >> 2) * (rand() & 1);
                     p_health -= edmg;
                     log_msg("A dark spell strikes thee for %d damage!", edmg);
+                    /* Cultists may also poison on death strike */
+                    if (etype >= ENEMY_CULTIST_L1 && etype <= ENEMY_CULTIST_L12)
+                        p_poisoned = 1;
                 } else {
-                    int elck_mod = m->luck - p_luck;
+                    int elck_mod = m->luck - eff_luck;
                     if (elck_mod < -3) elck_mod = -3;
                     if (elck_mod > 3) elck_mod = 3;
                     int etohit = e_atk + (rand() % 9) + elck_mod;
-                    if (etohit >= p_defense) {
+                    if (etohit >= eff_def) {
                         int edmg = e_atk - (p_toughness >> 1);
                         if (edmg < 0) edmg = 0;
                         if (edmg == 0) edmg = 1;
                         p_health -= edmg;
                         log_msg("It strikes thee for %d damage!", edmg);
+                        /* Cultists may also poison on death strike */
+                        if (etype >= ENEMY_CULTIST_L1 && etype <= ENEMY_CULTIST_L12)
+                            p_poisoned = 1;
                     } else {
                         log_msg("It misses thee!");
                     }
                 }
                 if (p_health < 0) p_health = 0;
+                /* Clear drop popup if player dies from death strike */
+                if (p_health <= 0) {
+                    drop_popup_item = -1;
+                    drop_popup_name = NULL;
+                }
             }
             if (etype == ENEMY_BOSS) {
                 p_steps += BOSS_BONUS;
@@ -337,21 +369,32 @@ void attack_enemy(int fx, int fy) {
     int e_atk = m->attack + ENEMY_ATK_LEVEL_BONUS(p_level);
     int can_magic = (etype >= ENEMY_CULTIST_L1 && etype <= ENEMY_CULTIST_L12)
                     || etype == ENEMY_BOSS;
+    int is_cultist = (etype >= ENEMY_CULTIST_L1 && etype <= ENEMY_CULTIST_L12);
     if (can_magic && ((rand() % 100) < (10 + m->luck))) {
         int edmg = e_atk + (e_atk >> 2) * (rand() & 1);
         p_health -= edmg;
         log_msg("%s hurls a dark spell for %d damage", ename, edmg);
+        /* Cultists may poison on magical counter */
+        if (is_cultist && (rand() & 1)) {
+            p_poisoned = 1;
+            log_msg("The foul magic doth poison thee!");
+        }
     } else {
-        int elck_mod = m->luck - p_luck;
+        int elck_mod = m->luck - eff_luck;
         if (elck_mod < -3) elck_mod = -3;
         if (elck_mod > 3) elck_mod = 3;
         int etohit = e_atk + (rand() % 9) + elck_mod;
-        if (etohit >= p_defense) {
+        if (etohit >= eff_def) {
             int edmg = e_atk - (p_toughness >> 1);
             if (edmg < 0) edmg = 0;
             if (edmg == 0) edmg = 1;
             p_health -= edmg;
             log_msg("%s strikes thee for %d damage", ename, edmg);
+            /* Cultist poison stab */
+            if (is_cultist && (rand() & 1)) {
+                p_poisoned = 1;
+                log_msg("The cultist's blade doth poison thee!");
+            }
         } else {
             log_msg("%s assails thee, but misses", ename);
         }
@@ -431,12 +474,18 @@ void generate_maze(int steps) {
            if (abs(mx - MIDDLE_W) <= 2 && abs(my - MIDDLE_H) <= 2) continue;
 
            int r = rand();
-             if (((r >> 16) & 7) == 0 && ((r >> 1) & 3) == 0) {
+             /* Potion: ~8% overall (single roll, branching sub-types) */
+             if (((r >> 16) & 3) == 0 && ((r >> 1) & 3) == 0) {
+                 int sp_type;
+                 if ((rand() % 16) == 0) {
+                     sp_type = SPRITE_POTION_PINK;   /* Spirit 'o Luck */
+                 } else if (p_level >= 9 && (rand() % 8) == 0) {
+                     sp_type = SPRITE_POTION_GREEN;  /* Antidote */
+                 } else {
+                     sp_type = (rand() & 1) ? SPRITE_POTION_BLUE : SPRITE_POTION_RED;
+                 }
                  set_map(mx, my, MAP_POTION);
-                 add_sprite(mx, my, SPRITE_POTION_BLUE, 0.0, 0);
-             } else if ((r & 15) == 0) {
-                 set_map(mx, my, MAP_POTION);
-                 add_sprite(mx, my, SPRITE_POTION_GREEN, 0.0, 0);
+                 add_sprite(mx, my, sp_type, 0.0, 0);
              } else if ((r % 9) == 0) {
                  set_map(mx, my, MAP_WATER);
                  add_sprite(mx, my, SPRITE_WATER, 0.0, 0);
@@ -508,6 +557,10 @@ void init_game(void) {
     p_luck      = PLAYER_BASE_LUCK;
     recalc_player_max();
 
+    p_poisoned = 0;
+    p_spirit_turns = 0;
+    move_was_step = 0;
+
     memset(inventory, 0, sizeof(inventory));
     log_head = 0;
     prev_log_mark = 0;
@@ -522,13 +575,17 @@ static int skip_next_drain = 0;  /* skip water drain on next end_turn() */
 void consume_item(int mx, int my) {
      int v = get_map(mx, my);
      if (v == MAP_WATER) {
-         p_water += 15 + (rand() & 15);
+         int hp_heal = rand() % 11;  /* 0-10 HP */
+         int wtr_gain = 15 + (rand() & 15);
+         p_health += hp_heal;
+         if (p_health > p_max_health) p_health = p_max_health;
+         p_water += wtr_gain;
          if (p_water > p_max_water) p_water = p_max_water;
          skip_next_drain = 1;
          set_map(mx, my, 0);
          remove_sprite_at(mx, my);
          flash_type = 1;
-         log_msg("Thou dost drink from a murky puddle");
+         log_msg("Thou dost drink from a murky puddle (+%d HP, +%d WTR)", hp_heal, wtr_gain);
      } else if (v == MAP_POTION) {
           int sp_type = get_sprite_type_at(mx, my);
           int item_id = (sp_type >= 0 && sp_type < NUM_SPRITE_TYPES)
@@ -561,12 +618,43 @@ void use_item(int item_id) {
 
     if (water_gain > 0) skip_next_drain = 1;
 
+    /* Apply special effects */
+    if (item_id == ITEM_SPIRIT_LUCK) {
+        p_spirit_turns = SPIRIT_DURATION(p_luck);
+        log_msg("Spirit 'o Luck emboldens thee for %d turns!", p_spirit_turns);
+    }
+    if (item_id == ITEM_ANTIDOTE) {
+        if (p_poisoned) {
+            p_poisoned = 0;
+            log_msg("The Antidote cleanseth the poison from thy veins!");
+        }
+    }
+
     inventory[item_id]--;
-    flash_type = (item_id == ITEM_BOTTLE_OF_WATER) ? 1 : 2;
+    flash_type = (item_id == ITEM_BOTTLE_OF_WATER) ? 1 :
+                 (item_id == ITEM_HEALING_POTION) ? 2 :
+                 (item_id == ITEM_SPIRIT_LUCK) ? 3 :
+                 (item_id == ITEM_ANTIDOTE) ? 2 : 3;
     log_msg("Used %s (+%d HP, +%d WTR)", def->name, hp_gain, water_gain);
 }
 
 int end_turn(void) {
+     /* Poison damage on any step (only forward/backward set move_was_step) */
+     if (p_poisoned && move_was_step) {
+         int pdmg = POISON_TICK_MIN + (rand() % (POISON_TICK_MAX - POISON_TICK_MIN + 1));
+         p_health -= pdmg;
+         log_msg("Poison wracks thy frame for %d HP!", pdmg);
+         if (p_health <= 0) { p_health = 0; log_msg("The poison hath claimed thee!"); return 1; }
+     }
+     move_was_step = 0;
+
+     /* Decay spirit turns */
+     if (p_spirit_turns > 0) {
+         p_spirit_turns--;
+         if (p_spirit_turns == 0)
+             log_msg("The Spirit 'o Luck fades away");
+     }
+
      if (skip_next_drain) {
          skip_next_drain = 0;
      } else if (p_water == 0) {
@@ -604,6 +692,7 @@ int try_move(int dx, int dy, int attack) {
    if (v >= 1 && v <= NUM_TEX) return 0;
        if (MAP_IS_ENEMY(v)) return -1;
       is_attack = attack;
+      move_was_step = 1;  /* forward/backward step for poison ticking */
      a_ox = player.x; a_oy = player.y;
     a_nx = nx + 0.5; a_ny = ny + 0.5;
     a_odx = a_ndx = player.dir_x;
@@ -632,6 +721,7 @@ int is_opposite(int a, int b) {
 }
 
 void try_turn(int left) {
+    move_was_step = 0; /* turning does not trigger poison */
     a_ox = player.x; a_oy = player.y;
     a_nx = player.x; a_ny = player.y;
     a_odx = player.dir_x; a_ody = player.dir_y;

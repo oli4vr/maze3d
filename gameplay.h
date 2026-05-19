@@ -17,6 +17,11 @@ extern int flash_type;
 extern int exit_x, exit_y;
 extern int game_won;
 
+/* ── Status effects ──────────────────────────────────────────── */
+extern int p_poisoned;
+extern int p_spirit_turns;
+extern int move_was_step;      /* set to 1 when moving forward/backward */
+
 /* ── Player RPG stats (persist across levels) ─────────────────── */
 extern int p_attack, p_defense, p_toughness;
 extern int p_endurance, p_stamina, p_luck;
@@ -48,6 +53,8 @@ enum {
     ITEM_HEALING_POTION = 0,
     ITEM_BOTTLE_OF_WATER,
     ITEM_SOULS,
+    ITEM_SPIRIT_LUCK,
+    ITEM_ANTIDOTE,
     NUM_ITEM_TYPES
 };
 

@@ -13,6 +13,7 @@
 #include "skull.h"
 #include "potion.h"
 #include "enemies.h"
+#include "enemy_sprite_data.h"
 
 /* ── Globals ──────────────────────────────────────────────────── */
 volatile int running = 1;           /* cleared by SIGINT or Q key          */
@@ -188,52 +189,22 @@ void init_tex(void) {
             }
     }
 
-    /* Enemy textures from enemies.h / enemies.c
-       Skeleton L1-L6 grey; skeleton L7-L12 red; orc L1-L6 red;
-       orc L7-L12 blue; cultist L1-L6 blue; cultist L7-L12 white;
-       boss purple.                                                  */
-    for (int e = 0; e < NUM_ENEMY_TYPES; e++) {
-        const EnemySpriteData *d = &enemy_sprite_data[e];
-        int is_orc         = (e >= ENEMY_ORC_L1     && e <= ENEMY_ORC_L6);
-        int is_red_skel    = (e >= ENEMY_SKELETON_L7 && e <= ENEMY_SKELETON_L12);
-        int is_blue_orc    = (e >= ENEMY_ORC_L7     && e <= ENEMY_ORC_L12);
-        int is_cultist     = (e >= ENEMY_CULTIST_L1 && e <= ENEMY_CULTIST_L6);
-        int is_white_cult  = (e >= ENEMY_CULTIST_L7 && e <= ENEMY_CULTIST_L12);
-        int is_boss        = (e == ENEMY_BOSS);
-        for (int y = 0; y < SKELE_H; y++)
-            for (int x = 0; x < SKELE_W; x++) {
-                int pi = y * SKELE_W + x;
-                if (!(*d->alpha)[pi]) {
-                    enemy_tex[e][y][x] = -1;
-                } else {
-                    int xi = pi * 3;
-                    int r = (*d->rgb)[xi];
-                    int g = (*d->rgb)[xi + 1];
-                    int b = (*d->rgb)[xi + 2];
-                    if (is_orc || is_red_skel) {
-                        /* Tint red: suppress green/blue */
-                        g = g * 3 / 10;
-                        b = b * 3 / 10;
-                    } else if (is_cultist || is_blue_orc) {
-                        /* Tint blue: suppress red/green */
-                        r = r * 3 / 10;
-                        g = g * 3 / 10;
-                    } else if (is_white_cult) {
-                        /* Tint grayscale */
-                        int gray = (r + g + b) / 3;
-                        r = gray; g = gray; b = gray;
-                    } else if (is_boss) {
-                        /* Tint purple: suppress green */
-                        g = g * 3 / 10;
-                    }
-                    int xt = rgb_to_xterm(r, g, b);
-                    enemy_tex[e][y][x] = xt;
-                    if (xterm_pair[xt] < 0) {
-                        xterm_pair[xt] = pair_next++;
-                        init_pair(xterm_pair[xt], xt, COLOR_BLACK);
-                    }
-                }
+    /* Enemy shade profiles: all families use grey ramp. */
+    static const int enemy_profile_xt[4][9] = {
+        { -1, 232, 234, 236, 238, 240, 242, 244, 246 },
+        { -1, 232, 234, 236, 238, 240, 242, 244, 246 },
+        { -1, 232, 234, 236, 238, 240, 242, 244, 246 },
+        { -1, 232, 234, 236, 238, 240, 242, 244, 246 },
+    };
+    for (int p = 0; p < 4; p++) {
+        for (int g = 0; g <= 8; g++) {
+            enemy_profile_colors[p][g] = enemy_profile_xt[p][g];
+            int xt = enemy_profile_xt[p][g];
+            if (xt >= 0 && xterm_pair[xt] < 0) {
+                xterm_pair[xt] = pair_next++;
+                init_pair(xterm_pair[xt], xt, COLOR_BLACK);
             }
+        }
     }
 
     free(spr_rgb);
@@ -255,7 +226,7 @@ void init_tex(void) {
      init_pair(grey_pair, 242, 242);
      health_pair = pair_next++;
      water_pair = pair_next++;
-     init_pair(health_pair, COLOR_GREEN, COLOR_BLACK);
+     init_pair(health_pair, COLOR_RED, COLOR_BLACK);
      init_pair(water_pair, COLOR_BLUE, COLOR_BLACK);
 }
 
@@ -679,9 +650,13 @@ void render_frame(void) {
       if (is_enemy) {
              sprite_h = sprite_h * 5 / 4;
              sprite_w = sprite_w * 5 / 4;
+             if (sp->level == ENEMY_BOSS) {
+                 sprite_h = sprite_h * 6 / 5;
+                 sprite_w = sprite_w * 6 / 5;
+             }
          }
 
-          /* Vertical offset from z value:
+           /* Vertical offset from z value:
             z=0   → centre at floor line (rows/2 + sprite_h/2)
             z=0.5 → centre at eye level  (rows/2)               */
           int v_shift = (int)((0.5 - sp->z) * sprite_h);
@@ -714,8 +689,16 @@ void render_frame(void) {
                  if (tex_y < 0) tex_y = 0;
                  if (tex_y >= tex_h) tex_y = tex_h - 1;
                 int xt;
-                  if (is_enemy) xt = enemy_tex[sp->level][tex_y][tex_x];
-                  else xt = sprite_tex[sp->type][tex_y][tex_x];
+                  if (is_enemy) {
+                      int si = enemy_sprite_idx[sp->level];
+                      int ri = enemy_color_ramp_idx[sp->level];
+                      int grey = enemy_sprite_ptrs[si][tex_y * SKELE_W + tex_x];
+                      if (grey == 0) continue;
+                      /* Even levels render 1 shade darker */
+                      int dl = enemy_info[sp->level].level;
+                      if (dl > 0 && dl % 2 == 0) grey = grey > 1 ? grey - 1 : 1;
+                      xt = enemy_profile_colors[ri][grey];
+                  } else xt = sprite_tex[sp->type][tex_y][tex_x];
                  if (xt < 0) continue;  /* transparent pixel */
 
                  int pair = xterm_pair[xt];
