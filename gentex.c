@@ -907,7 +907,7 @@ void gen_water_sprite(unsigned char *img) {
 
  /* gen_potion_texture: Render a potion bottle sprite from the
   * embedded POTION_W × POTION_H alpha-masked template (potion.h).
-  * The template is centred and placed at the bottom of the 32×32 grid.
+  * The template fills the full 32×32 grid (POTION_W/H == SPRITE_W/H).
   * colour_type: 0=blue, 1=red, 2=pink, 3=green.                    */
  void gen_potion_texture(unsigned char *img, int ct) {
     memset(img, 0, SPRITE_W * SPRITE_H * 3);

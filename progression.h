@@ -9,9 +9,9 @@
 #define PLAYER_BASE_TOUGHNESS  0
 #define PLAYER_BASE_ENDURANCE  0
 #define PLAYER_BASE_STAMINA    0
-#define PLAYER_BASE_LUCK       0
+#define PLAYER_BASE_LUCK       3
 
-#define SOULS_UPGRADE_COST    3
+#define SOULS_UPGRADE_COST    2
 
 /* ── Derived formulas ──────────────────────────────────────────── */
 /* max_health = base_health + (10 * stamina)

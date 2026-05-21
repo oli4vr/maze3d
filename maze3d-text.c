@@ -247,12 +247,12 @@ static void open_upgrade_txt(void) {
                inventory[ITEM_SOULS]);
         for (int i = 0; i < NUM_ORDER; i++) {
             int si = ORDER[i];
-            int val = si == STAT_DEFENSE ? p_defense + p_toughness :
+            int val = si == STAT_DEFENSE ? (p_defense + p_toughness) >> 1 :
                       si == STAT_ATTACK    ? p_attack :
                       si == STAT_ENDURANCE ? p_endurance :
                       si == STAT_STAMINA   ? p_stamina : p_luck;
             int cost = si == STAT_DEFENSE
-                       ? SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE] + p_upgrade_cnt[STAT_TOUGHNESS]
+                       ? SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE]
                        : SOULS_UPGRADE_COST + p_upgrade_cnt[si];
             printf("  %c%-12s %3d [%d]%s\n",
                    i == selected ? '>' : ' ',
@@ -279,7 +279,7 @@ static void open_upgrade_txt(void) {
                 upgrade_stat(ORDER[selected]);
                 printf("  Upgraded %s to %d!\n",
                        stat_names[ORDER[selected]],
-                       ORDER[selected] == STAT_DEFENSE ? p_defense + p_toughness :
+                       ORDER[selected] == STAT_DEFENSE ? (p_defense + p_toughness) >> 1 :
                        ORDER[selected] == STAT_ATTACK ? p_attack :
                        ORDER[selected] == STAT_ENDURANCE ? p_endurance :
                        ORDER[selected] == STAT_STAMINA ? p_stamina : p_luck);
@@ -502,7 +502,7 @@ void run_text_mode(int start_level, int start_stats[6], int test_enemy) {
             log_msg("Thou dost enter level %d of the labyrinth", p_level);
             printf("\n=== Level %d ===\n", p_level);
             printf("Stats: ATK=%d DEF=%d STA=%d END=%d LCK=%d\n",
-                   p_attack, p_defense + p_toughness, p_stamina, p_endurance, p_luck);
+                   p_attack, (p_defense + p_toughness) >> 1, p_stamina, p_endurance, p_luck);
             printf("Thou art in a dark maze. Find the exit!\n");
             flush_log_stdio();
 

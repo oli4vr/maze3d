@@ -139,7 +139,7 @@ void upgrade_stat(int stat_idx) {
 
     /* Unified DEF uses combined upgrade count for cost */
     if (stat_idx == STAT_DEFENSE)
-        cost = SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE] + p_upgrade_cnt[STAT_TOUGHNESS];
+        cost = SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE];
 
     if (inventory[ITEM_SOULS] < cost) return;
 

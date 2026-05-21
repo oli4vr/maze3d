@@ -276,18 +276,19 @@ static void draw_panel(void) {
     snprintf(buf, sizeof(buf), " %3d/%d", p_water, p_max_water);
     mvaddstr(py + 1, 21, buf);
 
-    snprintf(buf, sizeof(buf), " ATK %d  DEF %d", p_attack, p_defense + p_toughness);
+    snprintf(buf, sizeof(buf), " ATK %d  DEF %d", p_attack, (p_defense + p_toughness) >> 1);
     mvaddstr(py + 2, 0, buf);
     snprintf(buf, sizeof(buf), " STA %d  END %d  LCK %d", p_stamina, p_endurance, p_luck);
     mvaddstr(py + 3, 0, buf);
-    snprintf(buf, sizeof(buf), " LEVEL %d   STEPS %d   SCORE %d%s",
-             p_level, p_steps, get_current_score(),
-             p_poisoned ? " [POISON]" : "");
+    snprintf(buf, sizeof(buf), " LEVEL %d   STEPS %d   SCORE %d",
+             p_level, p_steps, get_current_score());
     mvaddstr(py + 4, 0, buf);
     if (p_spirit_turns > 0) {
-        snprintf(buf, sizeof(buf), " Souls: %d  [Spirit: %dt]", inventory[ITEM_SOULS], p_spirit_turns);
+        snprintf(buf, sizeof(buf), " Souls: %d  [Spirit: %dt]%s", inventory[ITEM_SOULS], p_spirit_turns,
+                 p_poisoned ? "  [POISON]" : "");
     } else {
-        snprintf(buf, sizeof(buf), " Souls: %d", inventory[ITEM_SOULS]);
+        snprintf(buf, sizeof(buf), " Souls: %d%s", inventory[ITEM_SOULS],
+                 p_poisoned ? "  [POISON]" : "");
     }
     mvaddstr(py + 5, 0, buf);
 
@@ -372,12 +373,12 @@ static void open_upgrade_nc(void) {
         /* Stats */
         for (int i = 0; i < NUM_ORDER; i++) {
             int si = ORDER[i];
-            int val = si == STAT_DEFENSE ? p_defense + p_toughness :
+            int val = si == STAT_DEFENSE ? (p_defense + p_toughness) >> 1 :
                       si == STAT_ATTACK    ? p_attack :
                       si == STAT_ENDURANCE ? p_endurance :
                       si == STAT_STAMINA   ? p_stamina : p_luck;
             int cost = si == STAT_DEFENSE
-                       ? SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE] + p_upgrade_cnt[STAT_TOUGHNESS]
+                       ? SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE]
                        : SOULS_UPGRADE_COST + p_upgrade_cnt[si];
             char line[48];
             snprintf(line, sizeof(line), "  %c%-12s %3d [%d]",
@@ -405,7 +406,7 @@ static void open_upgrade_nc(void) {
         attrset(COLOR_PAIR(panel_pair));
         int sel_si = selected < NUM_ORDER ? ORDER[selected] : -1;
         int sel_cost = sel_si == STAT_DEFENSE
-                       ? SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE] + p_upgrade_cnt[STAT_TOUGHNESS]
+                       ? SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE]
                        : (sel_si >= 0 ? SOULS_UPGRADE_COST + p_upgrade_cnt[sel_si] : 0);
         mvaddstr(by + box_h - 2, bx + 2,
                  selected < NUM_ORDER && inventory[ITEM_SOULS] >= sel_cost
