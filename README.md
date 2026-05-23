@@ -71,7 +71,8 @@ make win
 
 This produces `maze3d.exe` (x86-64 PE32+ console executable) using
 [PDCursesMod](https://github.com/Bill-Gray/PDCursesMod) as the curses
-replacement.  Run it natively on Windows or under Wine for testing.
+replacement. Performance will probably not be as good as the native linux version.
+Try to use a more modern terminal than cmd.exe
 
 ## Run
 
