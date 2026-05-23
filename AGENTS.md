@@ -7,12 +7,24 @@ Created by **oli4vr**.
 ```sh
 make            # requires libncursesw
 make clean
+make win        # cross-compile maze3d.exe for Windows (requires mingw-w64)
 ./maze3d        # interactive game
 ./maze3d --demo # auto-pilot screensaver demo
 ./maze3d --text # text-based debug mode
 ```
 
 Maze generation at startup — takes ~2s.
+
+**Windows cross-compile** — first fetch the PDCursesMod submodule:
+
+```sh
+git submodule update --init
+make win
+```
+
+Produces `maze3d.exe` linked against
+[PDCursesMod](https://github.com/Bill-Gray/PDCursesMod) (bundled as
+`lib/pdcursesmod/` submodule) instead of libncursesw.
 
 ## Controls
 

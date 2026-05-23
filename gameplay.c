@@ -851,7 +851,7 @@ int load_high_scores(HighScoreEntry *entries) {
             strncpy(def[i].name, default_names[i], HS_NAME_LEN - 1);
             def[i].name[HS_NAME_LEN - 1] = '\0';
             def[i].score  = default_scores[i];
-            def[i].level  = MAX_HIGHSCORES - i;
+            def[i].level  = 18 - i * 2;
             def[i].steps  = default_scores[i] - (MAX_HIGHSCORES - i - 1) * 100;
         }
         save_high_scores(def);
@@ -902,7 +902,11 @@ int save_high_scores(const HighScoreEntry *entries) {
     const char *home = getenv("HOME");
     if (!home) home = ".";
     snprintf(dir, sizeof(dir), "%s/%s", home, HS_DIR);
+#ifdef _WIN32
+    mkdir(dir);
+#else
     mkdir(dir, 0700);
+#endif
 
     unsigned char raw[8 + sizeof(HighScoreEntry) * MAX_HIGHSCORES];
     unsigned int magic = HS_MAGIC;

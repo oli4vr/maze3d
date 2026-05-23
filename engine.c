@@ -15,14 +15,22 @@
 #include "enemies.h"
 #include "enemy_sprite_data.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 /* ── Trig lookup tables ─────────────────────────────────────────── */
 double cos_lut[MAX_ANIM_FRAMES + 1];
 double sin_lut[MAX_ANIM_FRAMES + 1];
 
 int64_t get_time_ms(void) {
+#ifdef _WIN32
+    return (int64_t)GetTickCount64();
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+#endif
 }
 
 void init_luts(void) {

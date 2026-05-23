@@ -1,7 +1,7 @@
 /* maze3d.c — Interactive 2.5D terminal maze game
  *
  * Turn-based exploration of a procedurally generated 512×512 maze.
- * Controls: arrow keys (move/turn), Space (attack/use), Q (quit).
+ * Controls: arrow keys / ijkl (move/turn), Space (attack/use), Q (quit).
  * Uses the shared gameplay module for all game logic.                  */
 
 #include "gameplay.h"
@@ -425,10 +425,10 @@ static void open_upgrade_nc(void) {
         if (ch == '\t' || ch == 27) break;
 
         switch (ch) {
-            case KEY_UP:
+            case KEY_UP:    case 'i':
                 selected = (selected - 1 + ITEM_COUNT) % ITEM_COUNT;
                 break;
-            case KEY_DOWN:
+            case KEY_DOWN:  case 'k':
                 selected = (selected + 1) % ITEM_COUNT;
                 break;
             case ' ':
@@ -526,10 +526,10 @@ static void open_inventory_nc(void) {
         if (ch == '\t' || ch == 27) break;
 
         switch (ch) {
-            case KEY_UP:
+            case KEY_UP:    case 'i':
                 selected = (selected - 1 + total) % total;
                 break;
-            case KEY_DOWN:
+            case KEY_DOWN:  case 'k':
                 selected = (selected + 1) % total;
                 break;
             case ' ':
@@ -681,14 +681,14 @@ static int play_level(void) {
                 int ch = getch();
                 if (ch == 'q' || ch == 'Q') { running = 0; return 0; }
                 if (ch == '\t') { open_inventory_nc(); continue; }
-                if (ch == 'h' || ch == 'H') { show_hs_overlay_nc(1); continue; }
+                if (ch == KEY_F(2)) { show_hs_overlay_nc(1); continue; }
                 if (ch == KEY_F(1)) { help_overlay_nc(); continue; }
                 int act = 0;
                 switch (ch) {
-                    case KEY_UP:    act = 1; break;
-                    case KEY_DOWN:  act = 2; break;
-                    case KEY_LEFT:  act = 3; break;
-                    case KEY_RIGHT: act = 4; break;
+                    case KEY_UP:    case 'i': act = 1; break;
+                    case KEY_DOWN:  case 'k': act = 2; break;
+                    case KEY_LEFT:  case 'j': act = 3; break;
+                    case KEY_RIGHT: case 'l': act = 4; break;
                 }
                 if (act) {
                     if (queued != 0 && is_opposite(queued, act))
@@ -721,7 +721,7 @@ static int play_level(void) {
         int ch = getch();
         if (ch == 'q' || ch == 'Q') { running = 0; return 0; }
         if (ch == '\t') { open_inventory_nc(); continue; }
-        if (ch == 'h' || ch == 'H') { show_hs_overlay_nc(1); continue; }
+        if (ch == KEY_F(2)) { show_hs_overlay_nc(1); continue; }
         if (ch == KEY_F(1)) { help_overlay_nc(); continue; }
 
         if (ch == ' ') {
@@ -740,16 +740,16 @@ static int play_level(void) {
         if (ch == ERR) continue;
 
         switch (ch) {
-           case KEY_UP: {
-                   try_move((int)player.dir_x, (int)player.dir_y, 0);
-                   break;
-               }
-               case KEY_DOWN: {
-                   try_move(-(int)player.dir_x, -(int)player.dir_y, 0);
-                   break;
-               }
-            case KEY_LEFT: try_turn(1); break;
-            case KEY_RIGHT: try_turn(0); break;
+           case KEY_UP:    case 'i': {
+                    try_move((int)player.dir_x, (int)player.dir_y, 0);
+                    break;
+                }
+                case KEY_DOWN:  case 'k': {
+                    try_move(-(int)player.dir_x, -(int)player.dir_y, 0);
+                    break;
+                }
+            case KEY_LEFT:  case 'j': try_turn(1); break;
+            case KEY_RIGHT: case 'l': try_turn(0); break;
         }
     }
     return p_health > 0 ? 1 : 0;
@@ -855,7 +855,7 @@ static void show_hs_overlay_nc(int interactive) {
     }
 
     if (interactive) {
-        const char *prompt = "[TAB] close";
+        const char *prompt = "[TAB / F2] close";
         mvaddstr(by + bh - 2, bx + (bw - strlen(prompt)) / 2, prompt);
     } else {
         const char *prompt = "Press any key to continue";
@@ -866,7 +866,7 @@ static void show_hs_overlay_nc(int interactive) {
     if (interactive) {
         while (1) {
             int ch = getch();
-            if (ch == '\t') return;
+            if (ch == '\t' || ch == KEY_F(2)) return;
         }
     } else {
         getch();
@@ -964,17 +964,15 @@ static void help_overlay_nc(void) {
     static const char *lines[] = {
         "╔═══════════════════ HELP ════════════════════╗",
         "║                                             ║",
-        "║ A noble hero is trapped in an eternal       ║",
-        "║ maze inside the mind of the evil            ║",
-        "║ necromancer. The only way to break free     ║",
-        "║ is to defeat the foul necromancer himself.  ║",
+        "║ You are trapped in a maze inside the mind   ║",
+        "║ of the evil necromancer. Defeat the foul    ║",
+        "║ necromancer and break free.                 ║",
         "║                                             ║",
         "║ Navigate the maze, collect water and        ║",
-        "║ potions to survive, and fight through       ║",
-        "║ skeletons, orcs, and cultists to reach      ║",
-        "║ thy goal.                                   ║",
-        "║ The exit is a skull-shaped switch in        ║",
-        "║ the maze wall — press Space to use it.      ║",
+        "║ potions to survive, and battle the          ║",
+        "║ necromancer's evil minions.                 ║",
+        "║                                             ║",
+        "║ Exit a level using the skull-shaped switch  ║",
         "║                                             ║",
         "║ ── Stats ──                                 ║",
         "║ ATK — how hard thou strikest                ║",
@@ -984,14 +982,14 @@ static void help_overlay_nc(void) {
         "║ LCK — improves hit & drop chance            ║",
         "║                                             ║",
         "║ ── Controls ──                              ║",
-        "║ Arrow keys  — move / turn                   ║",
+        "║ Arrow keys / I J K L  — move / turn         ║",
         "║ Space       — attack / use / exit           ║",
         "║ TAB         — inventory / upgrade menu      ║",
-        "║ H           — high scores                   ║",
+        "║ F2          — high scores                   ║",
         "║ F1          — this help screen              ║",
         "║ Q           — quit                          ║",
         "║                                             ║",
-        "║             [TAB] close                     ║",
+        "║              [TAB / F1] close               ║",
         "╚═════════════════════════════════════════════╝",
     };
     int n = sizeof(lines) / sizeof(lines[0]);
@@ -1111,7 +1109,7 @@ static int death_overlay_nc(void) {
         int ch = getch();
         if (ch == '\t' || ch == 27) return 0;
         switch (ch) {
-            case KEY_LEFT: case KEY_RIGHT:
+            case KEY_LEFT: case KEY_RIGHT: case 'j': case 'l':
                 selected = !selected;
                 break;
             case '\n':

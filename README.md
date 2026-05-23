@@ -39,18 +39,39 @@ characters and xterm-256color in a standard terminal window.
   Most modern terminals (GNOME Terminal, kitty, Alacritty, iTerm2,
   Windows Terminal, xterm-256color) work out of the box.
 
+- **Windows cross-compile** (optional): requires `mingw-w64` and a POSIX host
+  (Linux, WSL, or MSYS2).
+
+  **Debian/Ubuntu:**
+  ```sh
+  sudo apt install mingw-w64
+  ```
+
 ## Build
 
 ```sh
-make          # compiles maze3d
+make          # compiles maze3d (native)
 make clean    # removes object files and binaries
 make install  # installs maze3d to /usr/bin/maze3d (may need sudo)
 make uninstall # removes /usr/bin/maze3d
+make win      # cross-compile maze3d.exe for Windows (requires mingw-w64)
 ```
 
 No configure step is needed.  The Makefile uses `pkg-config` to find
 the ncursesw include path and link flags automatically.  Use
 `DESTDIR=/some/path make install` for staged installations.
+
+**Windows cross-compile** — after cloning, initialise the PDCursesMod
+submodule first:
+
+```sh
+git submodule update --init
+make win
+```
+
+This produces `maze3d.exe` (x86-64 PE32+ console executable) using
+[PDCursesMod](https://github.com/Bill-Gray/PDCursesMod) as the curses
+replacement.  Run it natively on Windows or under Wine for testing.
 
 ## Run
 

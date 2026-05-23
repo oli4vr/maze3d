@@ -8,7 +8,11 @@
 #define ENGINE_H
 
 #include <stdint.h>
+#ifdef _WIN32
+#include <curses.h>
+#else
 #include <ncurses.h>
+#endif
 #include <locale.h>
 #include <stdlib.h>
 #include <math.h>
