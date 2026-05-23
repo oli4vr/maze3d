@@ -8,6 +8,8 @@ Created by **oli4vr**.
 make            # requires libncursesw
 make clean
 make win        # cross-compile maze3d.exe for Windows (requires mingw-w64)
+make deb        # build .deb package (requires dpkg-deb, fakeroot)
+make rpm        # build .rpm package  (requires rpmbuild, fakeroot)
 ./maze3d        # interactive game
 ./maze3d --demo # auto-pilot screensaver demo
 ./maze3d --text # text-based debug mode

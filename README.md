@@ -54,12 +54,18 @@ make          # compiles maze3d (native)
 make clean    # removes object files and binaries
 make install  # installs maze3d to /usr/bin/maze3d (may need sudo)
 make uninstall # removes /usr/bin/maze3d
+make deb      # build .deb package (requires dpkg-deb, fakeroot)
+make rpm      # build .rpm package  (requires rpmbuild, fakeroot)
 make win      # cross-compile maze3d.exe for Windows (requires mingw-w64)
 ```
 
 No configure step is needed.  The Makefile uses `pkg-config` to find
 the ncursesw include path and link flags automatically.  Use
 `DESTDIR=/some/path make install` for staged installations.
+
+Packages produced by `make deb` and `make rpm` depend on `libncursesw6`
+(Debian) / `ncurses` (Fedora/openSUSE) and install the binary to
+`/usr/bin/maze3d`.
 
 **Windows cross-compile** — after cloning, initialise the PDCursesMod
 submodule first:
