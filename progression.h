@@ -39,18 +39,18 @@
 /* All-rounder, moderate stats.  ATK increased ~20% from original
    to keep them threatening against TGH-stacking players.  Most
    players should die before reaching level 40.                     */
-#define SKEL_L1  MSTAT( 2, 6, 0, 0, 0, 0, 15,  3)
+#define SKEL_L1  MSTAT( 3, 6, 0, 0, 0, 0, 15,  3)
 #define SKEL_L2  MSTAT( 6, 9, 1, 0, 0, 0, 22,  5)
 #define SKEL_L3  MSTAT(10,12, 2, 0, 0, 0, 30,  6)
 #define SKEL_L4  MSTAT(13,15, 3, 0, 0, 0, 38,  7)
-#define SKEL_L5  MSTAT(17,19, 4, 0, 0, 0, 46,  8)
-#define SKEL_L6  MSTAT(21,21, 5, 0, 0, 0, 55,  9)
-#define SKEL_L7  MSTAT(25,25, 6, 0, 0, 0, 64, 10)
-#define SKEL_L8  MSTAT(28,28, 8, 0, 0, 0, 74, 11)
-#define SKEL_L9  MSTAT(32,32, 9, 0, 0, 0, 84, 13)
-#define SKEL_L10 MSTAT(35,36,10, 0, 0, 0, 94, 14)
-#define SKEL_L11 MSTAT(38,40,12, 0, 0, 0, 88, 16)
-#define SKEL_L12 MSTAT(42,44,14, 0, 0, 0, 82, 18)
+#define SKEL_L5  MSTAT(17,19, 4, 0, 0, 0, 46,  9)
+#define SKEL_L6  MSTAT(21,21, 5, 0, 0, 0, 55, 11)
+#define SKEL_L7  MSTAT(25,25, 6, 0, 0, 0, 64, 14)
+#define SKEL_L8  MSTAT(28,28, 8, 0, 0, 0, 74, 17)
+#define SKEL_L9  MSTAT(32,32, 9, 0, 0, 0, 84, 19)
+#define SKEL_L10 MSTAT(35,36,10, 0, 0, 0, 94, 22)
+#define SKEL_L11 MSTAT(38,40,12, 0, 0, 0, 88, 25)
+#define SKEL_L12 MSTAT(42,44,14, 0, 0, 0, 82, 27)
 
 /* ── Orc family (levels 1-12) ─────────────────────────────────── */
 /* Tougher than skeletons: higher ATK, DEF, and more HP.
@@ -58,16 +58,16 @@
    dangerous even against TGH-stacking players.                    */
 #define ORC_L1   MSTAT( 5, 7, 2, 0, 0, 0, 22,  5)
 #define ORC_L2   MSTAT( 9,10, 3, 0, 0, 0, 30,  7)
-#define ORC_L3   MSTAT(12,13, 4, 0, 0, 0, 38,  8)
-#define ORC_L4   MSTAT(16,17, 5, 0, 0, 0, 46, 10)
-#define ORC_L5   MSTAT(20,21, 6, 0, 0, 0, 56, 12)
-#define ORC_L6   MSTAT(24,25, 7, 0, 0, 0, 66, 15)
-#define ORC_L7   MSTAT(27,29, 9, 0, 0, 0, 78, 18)
-#define ORC_L8   MSTAT(32,32,11, 0, 0, 0, 90, 20)
-#define ORC_L9   MSTAT(34,35,13, 0, 0, 0,100, 22)
-#define ORC_L10  MSTAT(37,38,17, 0, 0, 0,130, 24)
-#define ORC_L11  MSTAT(41,41,20, 0, 0, 0,160, 27)
-#define ORC_L12  MSTAT(46,45,25, 0, 0, 0,200, 30)
+#define ORC_L3   MSTAT(12,13, 4, 0, 0, 0, 38,  9)
+#define ORC_L4   MSTAT(16,17, 5, 0, 0, 0, 46, 11)
+#define ORC_L5   MSTAT(20,21, 6, 0, 0, 0, 56, 14)
+#define ORC_L6   MSTAT(24,25, 7, 0, 0, 0, 66, 17)
+#define ORC_L7   MSTAT(27,29, 9, 0, 0, 0, 78, 20)
+#define ORC_L8   MSTAT(32,32,11, 0, 0, 0, 90, 22)
+#define ORC_L9   MSTAT(34,35,13, 0, 0, 0,100, 25)
+#define ORC_L10  MSTAT(37,38,17, 0, 0, 0,130, 28)
+#define ORC_L11  MSTAT(41,41,20, 0, 0, 0,160, 30)
+#define ORC_L12  MSTAT(46,45,25, 0, 0, 0,200, 33)
 
 /* ── Cultist family (levels 1-12) ─────────────────────────────── */
 /* Glass cannons: extreme ATK, paper DEF, low HP.
@@ -76,18 +76,18 @@
    A race: kill them in 1-2 rounds or face devastating damage.
    Introduced from level 10.  ATK restored to original values
    (was reduced 20% after overzealous balance pass).              */
-#define CULTIST_L1  MSTAT(24, 4, 0, 0, 0, 0, 22,  5)
-#define CULTIST_L2  MSTAT(30, 7, 1, 0, 0, 0, 28,  8)
-#define CULTIST_L3  MSTAT(36,10, 2, 0, 0, 0, 35, 10)
-#define CULTIST_L4  MSTAT(42,13, 3, 0, 0, 0, 40, 12)
-#define CULTIST_L5  MSTAT(48,17, 4, 0, 0, 0, 45, 14)
-#define CULTIST_L6  MSTAT(54,20, 5, 0, 0, 0, 51, 16)
-#define CULTIST_L7  MSTAT(58,24, 6, 0, 0, 0, 57, 19)
-#define CULTIST_L8  MSTAT(62,27, 7, 0, 0, 0, 63, 21)
-#define CULTIST_L9  MSTAT(66,28, 8, 0, 0, 0, 69, 23)
-#define CULTIST_L10 MSTAT(70,31, 9, 0, 0, 0, 80, 25)
-#define CULTIST_L11 MSTAT(74,34,10, 0, 0, 0, 96, 28)
-#define CULTIST_L12 MSTAT(78,37,11, 0, 0, 0,110, 30)
+#define CULTIST_L1  MSTAT(18, 4, 0, 0, 0, 0, 22, 10)
+#define CULTIST_L2  MSTAT(22, 7, 1, 0, 0, 0, 28, 13)
+#define CULTIST_L3  MSTAT(26,10, 2, 0, 0, 0, 35, 16)
+#define CULTIST_L4  MSTAT(40,13, 3, 0, 0, 0, 40, 20)
+#define CULTIST_L5  MSTAT(44,16, 4, 0, 0, 0, 45, 25)
+#define CULTIST_L6  MSTAT(48,19, 5, 0, 0, 0, 51, 28)
+#define CULTIST_L7  MSTAT(52,22, 6, 0, 0, 0, 57, 31)
+#define CULTIST_L8  MSTAT(56,25, 7, 0, 0, 0, 63, 34)
+#define CULTIST_L9  MSTAT(60,28, 8, 0, 0, 0, 69, 37)
+#define CULTIST_L10 MSTAT(64,31, 9, 0, 0, 0, 80, 40)
+#define CULTIST_L11 MSTAT(68,34,10, 0, 0, 0, 96, 43)
+#define CULTIST_L12 MSTAT(72,37,11, 0, 0, 0,110, 47)
 
 /* ── Boss (Necromancer) ───────────────────────────────────────── */
 /* Spawns at BOSS_LEVEL.  DEF=40 gives the player a realistic hit
@@ -111,10 +111,10 @@
 /* ── Consumable item effects ───────────────────────────────────── */
 #define POTION_HP_BASE      30
 #define POTION_HP_RANDOM    20
-#define POTION_WATER_RANDOM  5
+#define POTION_WATER_RANDOM 10
 
-#define WATER_BOTTLE_HP_RANDOM    5
-#define WATER_BOTTLE_WATER_BASE  30
+#define WATER_BOTTLE_HP_RANDOM    10
+#define WATER_BOTTLE_WATER_BASE   30
 #define WATER_BOTTLE_WATER_RANDOM 20
 
 /* ── Inventory limits ─────────────────────────────────────────── */
@@ -127,6 +127,29 @@
     ( (MAX_ITEM_STACK + ((sta) + (end)) / 3) < 30           \
       ? (MAX_ITEM_STACK + ((sta) + (end)) / 3) : 30 )
 
+/* ── Enemy drop chances ──────────────────────────────────────── */
+#define DROP_BASE_CHANCE      25   /* base % chance an enemy drops any item */
+#define DROP_CHANCE_PER_LUCK   1   /* +1% per LCK point */
+#define DROP_CHANCE_MAX       50   /* cap */
+#define DROP_HEALING_PCT      40   /* % of drops that are healing potion */
+#define DROP_WATER_PCT        40   /* % of drops that are water bottle */
+#define DROP_SPIRIT_PCT        5   /* % of drops that are Spirit 'o Luck */
+#define DROP_ANTIDOTE_PCT     15   /* % of drops that are Antidote (L9+) */
+#define DROP_ANTIDOTE_MIN_LVL  9   /* minimum level for Antidote drops */
+
+/* ── Maze builder spawn rates ────────────────────────────────── */
+/* Bit-test thresholds for generate_maze(); each run per empty cell */
+#define SPAWN_POTION_MASK       0x03  /* ((r>>16)&3) == 0 — 1/4 chance */
+#define SPAWN_POTION_SHIFT      16
+#define SPAWN_POTION_MASK2      0x03  /* ((r>>1)&3) == 0 — 1/4 chance */
+#define SPAWN_POTION_SHIFT2      1
+#define SPAWN_WATER_MOD          9    /* (r % 9) == 0 check (1/9) */
+#define SPAWN_ENEMY_MASK        0x07  /* ((r>>4)&7) == 0 — 1/8 chance */
+#define SPAWN_ENEMY_SHIFT        4
+
+/* ── Puddle healing ──────────────────────────────────────────── */
+#define PUDDLE_POISON_CURE_PCT  5   /* % chance to cure poison when drinking while poisoned */
+
 /* ── Spirit 'o Luck ──────────────────────────────────────────── */
 /* Duration = 2 + (luck >> 3) turns */
 #define SPIRIT_DURATION(luck)  (2 + ((luck) >> 3))
@@ -137,7 +160,7 @@
 #define POISON_TICK_MAX  2
 
 /* ── End turn costs (thirst) ──────────────────────────────────── */
-#define TURN_WATER_COST       4
+#define TURN_WATER_COST       3
 #define TURN_HP_DRAIN         2    /* when water == 0 */
 
 /* ── Global enemy level bonus ──────────────────────────────────── */

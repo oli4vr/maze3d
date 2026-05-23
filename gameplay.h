@@ -6,8 +6,7 @@
 #include "progression.h"
 
 /* ── Animation constants ──────────────────────────────────────── */
-#define ANIM_FRAMES 22
-#define ATTACK_FRAMES 16
+/* Timing is now defined in engine.h (ANIM_MOVE_MS / ANIM_TURN_MS / ATTACK_MS) */
 
 /* ── Game state ───────────────────────────────────────────────── */
 extern int p_health, p_water, p_steps, p_level, p_score;
@@ -31,7 +30,11 @@ extern int p_max_health, p_max_water;
 void recalc_player_max(void);
 
 /* ── Animation state ──────────────────────────────────────────── */
-extern int anim_rem, anim_type, queued;
+extern int anim_active;         /* 1 while an animation is in progress */
+extern int anim_type;           /* 0=move, 1=turn, 2=attack */
+extern int queued;              /* queued input direction (1-4) or 0 */
+extern int64_t anim_start_ms;   /* start time of current animation */
+extern int anim_duration;       /* duration of current animation (ms) */
 extern double a_ox, a_oy, a_odx, a_ody, a_opx, a_opy;
 extern double a_nx, a_ny, a_ndx, a_ndy, a_npx, a_npy;
 

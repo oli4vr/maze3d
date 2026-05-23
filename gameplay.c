@@ -27,7 +27,9 @@ int p_endurance, p_stamina, p_luck;
 int p_max_health, p_max_water;
 
 /* ── Animation state ──────────────────────────────────────────── */
-int anim_rem, anim_type, queued;
+int anim_active, anim_type, queued;
+int64_t anim_start_ms;
+int anim_duration;
 double a_ox, a_oy, a_odx, a_ody, a_opx, a_opy;
 double a_nx, a_ny, a_ndx, a_ndy, a_npx, a_npy;
 
@@ -291,20 +293,20 @@ void attack_enemy(int fx, int fy) {
                 inventory[ITEM_SOULS] = MAX_SOULS_STACK;
             log_msg("Thou hast vanquished the %s! +%d souls", ename, souls);
             p_score += souls * 5;
-            /* Drop chance: 25% + luck, capped at 50% */
-            int drop_chance = 25 + eff_luck;
-            if (drop_chance > 50) drop_chance = 50;
+            /* Drop chance: base + luck, capped */
+            int drop_chance = DROP_BASE_CHANCE + eff_luck * DROP_CHANCE_PER_LUCK;
+            if (drop_chance > DROP_CHANCE_MAX) drop_chance = DROP_CHANCE_MAX;
             if ((rand() % 100) < drop_chance) {
                 int item;
                 int dr = rand() % 100;
-                if (dr < 40) {
+                if (dr < DROP_HEALING_PCT) {
                     item = ITEM_HEALING_POTION;
-                } else if (dr < 80) {
+                } else if (dr < DROP_HEALING_PCT + DROP_WATER_PCT) {
                     item = ITEM_BOTTLE_OF_WATER;
-                } else if (dr < 90) {
+                } else if (dr < DROP_HEALING_PCT + DROP_WATER_PCT + DROP_SPIRIT_PCT) {
                     item = ITEM_SPIRIT_LUCK;
                 } else {
-                    item = (p_level >= 9) ? ITEM_ANTIDOTE : ITEM_SPIRIT_LUCK;
+                    item = (p_level >= DROP_ANTIDOTE_MIN_LVL) ? ITEM_ANTIDOTE : ITEM_SPIRIT_LUCK;
                 }
                 if (inventory[item] < ITEM_MAX_STACK(p_stamina, p_endurance)) {
                     inventory[item]++;
@@ -474,8 +476,9 @@ void generate_maze(int steps) {
            if (abs(mx - MIDDLE_W) <= 2 && abs(my - MIDDLE_H) <= 2) continue;
 
            int r = rand();
-             /* Potion: ~8% overall (single roll, branching sub-types) */
-             if (((r >> 16) & 3) == 0 && ((r >> 1) & 3) == 0) {
+              /* Potion: ~6% overall (1/4 × 1/4 = 1/16, then sub-type roll) */
+              if (((r >> SPAWN_POTION_SHIFT) & SPAWN_POTION_MASK) == 0
+                  && ((r >> SPAWN_POTION_SHIFT2) & SPAWN_POTION_MASK2) == 0) {
                  int sp_type;
                  if ((rand() % 16) == 0) {
                      sp_type = SPRITE_POTION_PINK;   /* Spirit 'o Luck */
@@ -486,10 +489,10 @@ void generate_maze(int steps) {
                  }
                  set_map(mx, my, MAP_POTION);
                  add_sprite(mx, my, sp_type, 0.0, 0);
-             } else if ((r % 9) == 0) {
-                 set_map(mx, my, MAP_WATER);
-                 add_sprite(mx, my, SPRITE_WATER, 0.0, 0);
-               } else if (((r >> 4) & 7) == 0) {
+            } else if ((r % SPAWN_WATER_MOD) == 0) {
+                set_map(mx, my, MAP_WATER);
+                add_sprite(mx, my, SPRITE_WATER, 0.0, 0);
+              } else if (((r >> SPAWN_ENEMY_SHIFT) & SPAWN_ENEMY_MASK) == 0) {
                   /* Don't place enemy adjacent to another enemy */
                   int blocked = 0;
                   int x1 = mx > 0 ? mx - 1 : mx;
@@ -584,8 +587,12 @@ void consume_item(int mx, int my) {
          skip_next_drain = 1;
          set_map(mx, my, 0);
          remove_sprite_at(mx, my);
-         flash_type = 1;
-         log_msg("Thou dost drink from a murky puddle (+%d HP, +%d WTR)", hp_heal, wtr_gain);
+          flash_type = 1;
+          log_msg("Thou dost drink from a murky puddle (+%d HP, +%d WTR)", hp_heal, wtr_gain);
+          if (p_poisoned && (rand() % 100) < PUDDLE_POISON_CURE_PCT) {
+              p_poisoned = 0;
+              log_msg("The brackish water doth purge the venom from thy veins!");
+          }
      } else if (v == MAP_POTION) {
           int sp_type = get_sprite_type_at(mx, my);
           int item_id = (sp_type >= 0 && sp_type < NUM_SPRITE_TYPES)
@@ -699,7 +706,9 @@ int try_move(int dx, int dy, int attack) {
     a_ody = a_ndy = player.dir_y;
     a_opx = a_npx = player.plane_x;
     a_opy = a_npy = player.plane_y;
-    anim_rem = ANIM_FRAMES; anim_type = 0; queued = 0;
+     anim_active = 1; anim_start_ms = get_time_ms();
+     anim_duration = ANIM_MOVE_MS;
+     anim_type = 0; queued = 0;
     return 1;
 }
 
@@ -712,7 +721,9 @@ void try_attack(void) {
     a_ody = a_ndy = player.dir_y;
     a_opx = a_npx = player.plane_x;
     a_opy = a_npy = player.plane_y;
-    anim_rem = ATTACK_FRAMES; anim_type = 2; queued = 0;
+    anim_active = 1; anim_start_ms = get_time_ms();
+    anim_duration = ATTACK_MS;
+    anim_type = 2; queued = 0;
 }
 
 int is_opposite(int a, int b) {
@@ -731,27 +742,31 @@ void try_turn(int left) {
     a_ndy = dir_vec[anim_new_dir][1];
     a_npx = dir_vec[anim_new_dir][1] * 0.767;
     a_npy = -dir_vec[anim_new_dir][0] * 0.767;
-    anim_rem = ANIM_FRAMES; anim_type = 1; queued = 0;
+    anim_active = 1; anim_start_ms = get_time_ms();
+    anim_duration = ANIM_TURN_MS;
+    anim_type = 1; queued = 0;
 }
 
 /* ── Animation update ─────────────────────────────────────────-- */
 
 void update_anim(void) {
-    if (anim_rem <= 0) return;
-    anim_rem--;
-    double t = 1.0 - (double)anim_rem / ANIM_FRAMES;
+    if (!anim_active) return;
+    int64_t elapsed = get_time_ms() - anim_start_ms;
+    if (elapsed >= anim_duration) { elapsed = anim_duration; anim_active = 0; }
+    double t = (double)elapsed / anim_duration;
     if (anim_type == 2) {
-        double tt = 1.0 - (double)anim_rem / ATTACK_FRAMES;
-        double bt = (tt < 0.5) ? tt * 2.0 : 2.0 - tt * 2.0;
+        double bt = (t < 0.5) ? t * 2.0 : 2.0 - t * 2.0;
         player.x = a_ox + (a_nx - a_ox) * bt;
         player.y = a_oy + (a_ny - a_oy) * bt;
     } else {
         player.x = a_ox + (a_nx - a_ox) * t;
         player.y = a_oy + (a_ny - a_oy) * t;
         if (anim_type == 1) {
-            double a = t * M_PI / 2;
-            if (a_ndx == a_ody && a_ndy == -a_odx) a = -a;
-            double ca = cos(a), sa = sin(a);
+            int lut_idx = (int)(t * MAX_ANIM_FRAMES + 0.5);
+            if (lut_idx > MAX_ANIM_FRAMES) lut_idx = MAX_ANIM_FRAMES;
+            double ca = cos_lut[lut_idx];
+            double sa = sin_lut[lut_idx];
+            if (a_ndx == a_ody && a_ndy == -a_odx) sa = -sa;
             player.dir_x = a_odx * ca - a_ody * sa;
             player.dir_y = a_odx * sa + a_ody * ca;
             player.plane_x = a_opx * ca - a_opy * sa;

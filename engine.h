@@ -7,6 +7,7 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
+#include <stdint.h>
 #include <ncurses.h>
 #include <locale.h>
 #include <stdlib.h>
@@ -18,6 +19,29 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+
+/* ── Fixed-point arithmetic ────────────────────────────────────── */
+typedef int64_t fp_t;
+#define FP_SHIFT 20
+#define FP_SCALE (1LL << FP_SHIFT)
+#define FP_ONE   (1LL << FP_SHIFT)
+#define int_to_fp(x)  ((fp_t)(x) << FP_SHIFT)
+#define fp_to_int(x)  ((int)((x) >> FP_SHIFT))
+#define double_to_fp(x) ((fp_t)((x) * FP_SCALE))
+
+/* ── Performance: cast 1 ray per RAY_STEP columns ─────────────── */
+#define RAY_STEP 1
+
+/* ── Animation timings (milliseconds) ──────────────────────────── */
+/* Controls how long each animation takes regardless of FPS.
+   Tune to taste — shorter = snappier, longer = smoother.          */
+#define ANIM_MOVE_MS    250   /* forward/backward move (ms)       */
+#define ANIM_TURN_MS    200   /* 90-degree turn (ms)              */
+#define ATTACK_MS       150   /* attack lunge (ms)                */
+#define AUTO_MOVE_MS    250   /* demo-mode move (ms)              */
+#define AUTO_TURN_MS    200   /* demo-mode turn (ms)              */
+
+int64_t get_time_ms(void);   /* monotonic milliseconds since boot */
 
 /* ── Map dimensions ───────────────────────────────────────────── */
 #define MAP_W 512          /* world width  in cells               */
@@ -108,8 +132,14 @@ extern Sprite sprites[MAX_SPRITES];
 extern int num_sprites;
 extern int sprite_tex[NUM_SPRITE_TYPES][SPRITE_H][SPRITE_W];
 
+/* ── Trig lookup tables (filled by init_luts()) ───────────────── */
+#define MAX_ANIM_FRAMES 30         /* enough for original or reduced */
+extern double cos_lut[MAX_ANIM_FRAMES + 1];
+extern double sin_lut[MAX_ANIM_FRAMES + 1];
+
 /* ── Engine API ───────────────────────────────────────────────── */
 void init_tex(void);               /* generate all wall + sprite textures */
+void init_luts(void);              /* generate trig + other lookup tables */
 void init_player(void);            /* place player at centre of map       */
 void create_lab(int num);          /* carve maze + scatter sprites        */
 void init_ncurses(void);           /* setup terminal, colours, input      */

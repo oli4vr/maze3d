@@ -126,7 +126,7 @@ static int do_move(int dx, int dy) {
     /* Snap instantly to target */
     player.x = a_nx;
     player.y = a_ny;
-    anim_rem = 0;
+    anim_active = 0;
 
     int cx = (int)player.x, cy = (int)player.y;
     int v = get_map(cx, cy);
@@ -173,7 +173,7 @@ static void do_turn(int left) {
     /* Snap instantly */
     p_dir = anim_new_dir;
     set_player_dir(p_dir);
-    anim_rem = 0;
+    anim_active = 0;
     printf("  You turn %s.\n", left ? "left" : "right");
 }
 

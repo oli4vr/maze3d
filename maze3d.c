@@ -15,10 +15,10 @@
 
 /* ── Demo mode (auto-pilot screensaver) ─────────────────────────── */
 
-#define AUTO_FRAMES 22
-
-static int auto_rem = 0;
-static int auto_t;
+static int auto_active = 0;
+static int64_t auto_start_ms;
+static int auto_type;  /* 1=move, 2=turn */
+static int auto_duration;
 static int force_move = 0;
 static double old_x, old_y, old_dx, old_dy, old_px, old_py;
 static double new_x, new_y, new_dx, new_dy, new_px, new_py;
@@ -32,7 +32,8 @@ static void auto_move(double dx, double dy) {
     old_x = player.x; old_y = player.y; new_x = nx; new_y = ny;
     old_dx = new_dx = player.dir_x; old_dy = new_dy = player.dir_y;
     old_px = new_px = player.plane_x; old_py = new_py = player.plane_y;
-    auto_t = 1; auto_rem = AUTO_FRAMES;
+    auto_type = 1; auto_active = 1;
+    auto_start_ms = get_time_ms(); auto_duration = AUTO_MOVE_MS;
 }
 
 static void auto_turn(int left) {
@@ -46,19 +47,23 @@ static void auto_turn(int left) {
         new_dx = old_dy; new_dy = -old_dx;
         new_px = old_py; new_py = -old_px;
     }
-    auto_t = 2; auto_rem = AUTO_FRAMES;
+    auto_type = 2; auto_active = 1;
+    auto_start_ms = get_time_ms(); auto_duration = AUTO_TURN_MS;
 }
 
 static void auto_update(void) {
-    if (auto_rem <= 0) return;
-    auto_rem--;
-    double t = 1.0 - (double)auto_rem / AUTO_FRAMES;
+    if (!auto_active) return;
+    int64_t elapsed = get_time_ms() - auto_start_ms;
+    if (elapsed >= auto_duration) { elapsed = auto_duration; auto_active = 0; }
+    double t = (double)elapsed / auto_duration;
     player.x = old_x + (new_x - old_x) * t;
     player.y = old_y + (new_y - old_y) * t;
-    if (auto_t == 2) {
-        double a = t * M_PI / 2;
-        if (new_dx == old_dy && new_dy == -old_dx) a = -a;
-        double ca = cos(a), sa = sin(a);
+    if (auto_type == 2) {
+        int lut_idx = (int)(t * MAX_ANIM_FRAMES + 0.5);
+        if (lut_idx > MAX_ANIM_FRAMES) lut_idx = MAX_ANIM_FRAMES;
+        double ca = cos_lut[lut_idx];
+        double sa = sin_lut[lut_idx];
+        if (new_dx == old_dy && new_dy == -old_dx) sa = -sa;
         player.dir_x = old_dx * ca - old_dy * sa;
         player.dir_y = old_dx * sa + old_dy * ca;
         player.plane_x = old_px * ca - old_py * sa;
@@ -108,7 +113,7 @@ static int target_bias(int lx, int ly, int rx, int ry) {
 }
 
 static void auto_think(void) {
-    if (auto_rem > 0) return;
+    if (auto_active) return;
 
     int px = (int)player.x, py = (int)player.y;
     visited[py * MAP_W + px] = 1;
@@ -197,6 +202,7 @@ static void run_demo(void) {
     if (!visited) { endwin(); fprintf(stderr, "malloc failed\n"); return; }
 
     init_tex();
+    init_luts();
     create_lab(MAZE_STEPS);
     init_player();
 
@@ -595,7 +601,7 @@ static int play_level(void) {
         }
     }
 
-    anim_rem = 0; queued = 0;
+    anim_active = 0; queued = 0;
 
     log_msg("Thou dost enter level %d of the labyrinth", p_level);
 
@@ -605,9 +611,11 @@ static int play_level(void) {
         draw_panel();
 
         int flash = 0;
-        if (anim_type == 2 && anim_rem == ATTACK_FRAMES / 2)
-            flash = flash_pair;
-        else if (flash_type) {
+        if (anim_type == 2 && anim_active) {
+            int64_t flash_elapsed = get_time_ms() - anim_start_ms;
+            if (flash_elapsed >= ATTACK_MS / 2 && flash_elapsed < ATTACK_MS / 2 + 16)
+                flash = flash_pair;
+        } else if (flash_type) {
             if (flash_type == 1) flash = blue_pair;
             else if (flash_type == 2) flash = green_pair;
             else if (flash_type == 3) flash = grey_pair;
@@ -623,12 +631,12 @@ static int play_level(void) {
         }
 
         refresh();
-        napms(16);
+        napms(1);
 
-        if (anim_rem > 0) {
+        if (anim_active) {
             update_anim();
 
-            if (anim_rem == 0) {
+            if (!anim_active) {
                 if (anim_type == 1) {
                     p_dir = anim_new_dir;
                     set_player_dir(p_dir);
@@ -887,10 +895,10 @@ static void drop_popup_nc(void) {
     int rows, cols;
     getmaxyx(stdscr, rows, cols);
 
-#define SP_SCALE 2
-    int sp_w = SPRITE_W / SP_SCALE; /* 16 */
-    int sp_h = SPRITE_H / SP_SCALE; /* 16 */
-    int bw = sp_w + 12;
+#define SP_SCALE 1
+    int sp_w = SPRITE_W / SP_SCALE; /* 32 */
+    int sp_h = SPRITE_H / SP_SCALE; /* 32 */
+    int bw = sp_w + 8;
     int bh = 2 + 1 + 1 + sp_h + 1 + 1 + 1 + 1;
     int bx = (cols - bw) / 2;
     int by = (rows - bh) / 2;
@@ -1180,6 +1188,7 @@ int main(int argc, char **argv) {
     map = malloc(MAP_W * MAP_H);
     if (!map) { endwin(); fprintf(stderr, "malloc failed\n"); return 1; }
     init_tex();
+    init_luts();
 
     int dbg_first = 1;
     while (running) {

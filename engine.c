@@ -15,6 +15,25 @@
 #include "enemies.h"
 #include "enemy_sprite_data.h"
 
+/* ── Trig lookup tables ─────────────────────────────────────────── */
+double cos_lut[MAX_ANIM_FRAMES + 1];
+double sin_lut[MAX_ANIM_FRAMES + 1];
+
+int64_t get_time_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+void init_luts(void) {
+    for (int i = 0; i <= MAX_ANIM_FRAMES; i++) {
+        double t = (double)i / MAX_ANIM_FRAMES;
+        double a = t * M_PI / 2.0;
+        cos_lut[i] = cos(a);
+        sin_lut[i] = sin(a);
+    }
+}
+
 /* ── Globals ──────────────────────────────────────────────────── */
 volatile int running = 1;           /* cleared by SIGINT or Q key          */
 unsigned char *map;                 /* MAP_W × MAP_H cell grid             */
@@ -403,79 +422,100 @@ int can_move_to(double nx, double ny) {
 
 /* ── Frame rendering ──────────────────────────────────────────────── */
 
-/* render_frame: Render a single frame of the 3D view.
+/* render_frame: Render a single frame — fixed-point DDA with trig LUTs
  *
- * Algorithm (DDA raycasting):
- *   1. For each screen column, cast a ray through the player's camera
- *      plane into the world.
- *   2. Step through the map grid using DDA until a wall is hit.
- *   3. Compute the perpendicular distance to avoid fisheye distortion.
- *   4. Project the wall slice onto the screen column at the correct
- *      height and shade level.
- *   5. After all wall columns are drawn, project sprites as billboards
- *      sorted by distance (farthest first) with z-ordering.
- *
- * Output is via ncurses mvaddstr calls to stdscr.                    */
+ * 1. Cast 1 ray per RAY_STEP columns using int64_t fixed-point DDA.
+ * 2. Stretch each wall slice across RAY_STEP screen columns.
+ * 3. Precompute tex_step for each column to avoid per-pixel division.
+ * 4. Render ceiling/floor as single mvwhline batches.
+ * 5. Sort sprites with qsort; precompute sprite tex_step per sprite.
+ */
 void render_frame(void) {
     int rows, cols;
     getmaxyx(stdscr, rows, cols);
     if (rows < 1 || cols < 1) return;
 
-    /* 5 shade levels — full block to space */
     static const char *SHADES[] = {
         "\xe2\x96\x88", "\xe2\x96\x93",
         "\xe2\x96\x92", "\xe2\x96\x91", " "
     };
 
-    double perp_buf[cols];  /* perp distance per column for sprite occlusion */
+    int nrays = (cols + RAY_STEP - 1) / RAY_STEP;
+    if (nrays < 1) nrays = 1;
+
+    /* Precompute player fixed-point state */
+    fp_t fp_px = double_to_fp(player.x);
+    fp_t fp_py = double_to_fp(player.y);
+    fp_t fp_pdx = double_to_fp(player.dir_x);
+    fp_t fp_pdy = double_to_fp(player.dir_y);
+    fp_t fp_ppx = double_to_fp(player.plane_x);
+    fp_t fp_ppy = double_to_fp(player.plane_y);
+
+    /* Per-column perpendicular distance for sprite occlusion */
+    fp_t perp_buf_fp[cols];
 
     /* ── WALL RENDERING ────────────────────────────────────────── */
-    for (int x = 0; x < cols; x++) {
-        /* Compute ray direction for this screen column */
-        double cam_x = 2.0 * x / (double)cols - 1.0;
-        double ray_dir_x = player.dir_x + player.plane_x * cam_x;
-        double ray_dir_y = player.dir_y + player.plane_y * cam_x;
 
-        int map_x = (int)player.x;
-        int map_y = (int)player.y;
+    /* Ray LUTs (one entry per unique ray) */
+    fp_t ray_dir_x_fp[nrays];
+    fp_t ray_dir_y_fp[nrays];
+    fp_t delta_x_fp[nrays];
+    fp_t delta_y_fp[nrays];
+    int   step_x[nrays];
+    int   step_y[nrays];
 
-        /* Length of ray from one x/y-side to the next */
-        double delta_dist_x = (ray_dir_x == 0) ? 1e30 : fabs(1.0 / ray_dir_x);
-        double delta_dist_y = (ray_dir_y == 0) ? 1e30 : fabs(1.0 / ray_dir_y);
+    for (int r = 0; r < nrays; r++) {
+        int x_col = r * RAY_STEP;
+        if (x_col >= cols) { nrays = r; break; }
+        fp_t cam_x_fp = (int_to_fp(2 * x_col)) / cols - FP_ONE;
+        ray_dir_x_fp[r] = fp_pdx + ((fp_ppx * cam_x_fp) >> FP_SHIFT);
+        ray_dir_y_fp[r] = fp_pdy + ((fp_ppy * cam_x_fp) >> FP_SHIFT);
 
-        /* Initial step distances to the first grid boundary */
-        int step_x, step_y;
-        double side_dist_x, side_dist_y;
+        delta_x_fp[r] = (ray_dir_x_fp[r] == 0)
+                        ? INT64_MAX
+                        : llabs((FP_ONE * FP_SCALE) / ray_dir_x_fp[r]);
+        delta_y_fp[r] = (ray_dir_y_fp[r] == 0)
+                        ? INT64_MAX
+                        : llabs((FP_ONE * FP_SCALE) / ray_dir_y_fp[r]);
+        step_x[r] = (ray_dir_x_fp[r] >= 0) ? 1 : -1;
+        step_y[r] = (ray_dir_y_fp[r] >= 0) ? 1 : -1;
+    }
 
-        if (ray_dir_x < 0) {
-            step_x = -1;
-            side_dist_x = (player.x - map_x) * delta_dist_x;
-        } else {
-            step_x = 1;
-            side_dist_x = (map_x + 1.0 - player.x) * delta_dist_x;
-        }
+    /* ── Cast rays ─────────────────────────────────────────────── */
+    for (int r = 0; r < nrays; r++) {
+        int map_x = fp_to_int(fp_px);
+        int map_y = fp_to_int(fp_py);
 
-        if (ray_dir_y < 0) {
-            step_y = -1;
-            side_dist_y = (player.y - map_y) * delta_dist_y;
-        } else {
-            step_y = 1;
-            side_dist_y = (map_y + 1.0 - player.y) * delta_dist_y;
-        }
+        /* Initial side distances */
+        fp_t side_x_fp, side_y_fp;
+        fp_t cell_frac_x_fp = fp_px - int_to_fp(map_x);
+        fp_t cell_frac_y_fp = fp_py - int_to_fp(map_y);
 
-        /* DDA loop: step through grid cells until a wall is hit */
-        int hit = 0, side = 0;
-        int wall_type = 0;
-        int dda_step = 20;
+        if (delta_x_fp[r] >= INT64_MAX / 2)
+            side_x_fp = INT64_MAX;
+        else if (step_x[r] < 0)
+            side_x_fp = (cell_frac_x_fp * delta_x_fp[r]) >> FP_SHIFT;
+        else
+            side_x_fp = ((FP_ONE - cell_frac_x_fp) * delta_x_fp[r]) >> FP_SHIFT;
+
+        if (delta_y_fp[r] >= INT64_MAX / 2)
+            side_y_fp = INT64_MAX;
+        else if (step_y[r] < 0)
+            side_y_fp = (cell_frac_y_fp * delta_y_fp[r]) >> FP_SHIFT;
+        else
+            side_y_fp = ((FP_ONE - cell_frac_y_fp) * delta_y_fp[r]) >> FP_SHIFT;
+
+        /* DDA */
+        int hit = 0, side = 0, wall_type = 0, dda_step = 20;
         while (hit == 0 && dda_step-- > 0) {
-            if (side_dist_x < side_dist_y) {
-                side_dist_x += delta_dist_x;
-                map_x += step_x;
-                side = 0;  /* hit an x-side (north/south wall) */
+            if (side_x_fp < side_y_fp) {
+                side_x_fp += delta_x_fp[r];
+                map_x += step_x[r];
+                side = 0;
             } else {
-                side_dist_y += delta_dist_y;
-                map_y += step_y;
-                side = 1;  /* hit a y-side (east/west wall)    */
+                side_y_fp += delta_y_fp[r];
+                map_y += step_y[r];
+                side = 1;
             }
             if (map_y < 0 || map_y >= MAP_H ||
                 map_x < 0 || map_x >= MAP_W) break;
@@ -483,121 +523,128 @@ void render_frame(void) {
             if (wall_type >= 1 && wall_type <= NUM_TEX) hit = 1;
         }
 
-        double perp_dist;
-
-        /* No wall hit — fill column with ceiling/floor */
+        /* Perpendicular distance */
+        fp_t perp_dist_fp;
         if (hit == 0) {
-            perp_dist = 1e30;
-            perp_buf[x] = perp_dist;
-            int mid = rows / 2;
-            for (int y = 0; y < rows; y++) {
-                attrset(COLOR_PAIR((y < mid) ? ceil_pair : floor_pair));
-                mvaddstr(y, x, " ");
+            perp_dist_fp = INT64_MAX;
+        } else if (side == 0) {
+            fp_t num = int_to_fp(map_x) - fp_px + (step_x[r] == -1 ? FP_ONE : 0);
+            perp_dist_fp = (ray_dir_x_fp[r] == 0) ? INT64_MAX : (num * FP_SCALE) / ray_dir_x_fp[r];
+        } else {
+            fp_t num = int_to_fp(map_y) - fp_py + (step_y[r] == -1 ? FP_ONE : 0);
+            perp_dist_fp = (ray_dir_y_fp[r] == 0) ? INT64_MAX : (num * FP_SCALE) / ray_dir_y_fp[r];
+        }
+
+        if (perp_dist_fp < double_to_fp(0.01)) perp_dist_fp = double_to_fp(0.01);
+
+        /* Stretch across RAY_STEP columns */
+        int col_start = r * RAY_STEP;
+        int col_end = col_start + RAY_STEP - 1;
+        if (col_end >= cols) col_end = cols - 1;
+
+        /* Miss or too-far: fill columns with ceiling/floor */
+        if (hit == 0 || perp_dist_fp > double_to_fp(12.0)) {
+            if (hit == 0) perp_dist_fp = INT64_MAX;
+            for (int x = col_start; x <= col_end; x++) {
+                perp_buf_fp[x] = perp_dist_fp;
+                int m = rows / 2;
+                attrset(COLOR_PAIR(ceil_pair));
+                mvvline(0, x, ' ', m);
+                attrset(COLOR_PAIR(floor_pair));
+                mvvline(m, x, ' ', rows - m);
             }
             continue;
         }
 
-        /* Calculate perpendicular distance (avoids fisheye) */
-        if (side == 0)
-            perp_dist = (map_x - player.x + (1.0 - step_x) / 2.0) / ray_dir_x;
-        else
-            perp_dist = (map_y - player.y + (1.0 - step_y) / 2.0) / ray_dir_y;
+        /* Record per-column distance */
+        for (int x = col_start; x <= col_end; x++)
+            perp_buf_fp[x] = perp_dist_fp;
 
-        /* Clamp distance and discard far walls */
-        if (perp_dist < 0.01) perp_dist = 0.01;
-        if (perp_dist > 12.0) {
-            perp_buf[x] = 1e30;
-            int mid = rows / 2;
-            for (int y = 0; y < rows; y++) {
-                attrset(COLOR_PAIR((y < mid) ? ceil_pair : floor_pair));
-                mvaddstr(y, x, " ");
-            }
-            continue;
-        }
-        perp_buf[x] = perp_dist;
-
-        /* Projected wall slice height and draw range */
-        int wall_h = (int)((double)rows / perp_dist);
+        /* Wall slice height */
+        int wall_h = (int)((int64_t)rows * FP_SCALE / perp_dist_fp);
+        if (wall_h < 1) wall_h = 1;
         int draw_start = -wall_h / 2 + rows / 2;
-        int draw_end = wall_h / 2 + rows / 2;
-
+        int draw_end   =  wall_h / 2 + rows / 2;
         if (draw_start < 0) draw_start = 0;
         if (draw_end >= rows) draw_end = rows - 1;
         if (draw_end < draw_start) continue;
 
-        /* Determine where on the wall the ray hit (texture x-coord) */
-        double wall_x;
+        /* Texture x-coordinate */
+        fp_t wall_x_fp;
         if (side == 0)
-            wall_x = player.y + perp_dist * ray_dir_y;
+            wall_x_fp = fp_py + ((perp_dist_fp * ray_dir_y_fp[r]) >> FP_SHIFT);
         else
-            wall_x = player.x + perp_dist * ray_dir_x;
-        wall_x -= floor(wall_x);
-
-        int tex_x = (int)(wall_x * (double)TEX_W);
-        if (side == 0 && ray_dir_x > 0) tex_x = TEX_W - tex_x - 1;
-        if (side == 1 && ray_dir_y < 0) tex_x = TEX_W - tex_x - 1;
+            wall_x_fp = fp_px + ((perp_dist_fp * ray_dir_x_fp[r]) >> FP_SHIFT);
+        int tex_x = (int)(((wall_x_fp & (FP_ONE - 1)) * TEX_W) >> FP_SHIFT);
+        if (side == 0 && fp_to_int(ray_dir_x_fp[r]) > 0) tex_x = TEX_W - tex_x - 1;
+        if (side == 1 && fp_to_int(ray_dir_y_fp[r]) < 0) tex_x = TEX_W - tex_x - 1;
         if (tex_x < 0) tex_x = 0;
         if (tex_x >= TEX_W) tex_x = TEX_W - 1;
 
-        /* Select shade level based on distance */
+        /* Shade level */
         int shade;
-        if (perp_dist < 1.5) shade = 0;
-        else if (perp_dist < 2.5) shade = 1;
-        else if (perp_dist < 4.0) shade = 2;
-        else if (perp_dist < 7.0) shade = 3;
+        if (perp_dist_fp < double_to_fp(1.5)) shade = 0;
+        else if (perp_dist_fp < double_to_fp(2.5)) shade = 1;
+        else if (perp_dist_fp < double_to_fp(4.0)) shade = 2;
+        else if (perp_dist_fp < double_to_fp(7.0)) shade = 3;
         else shade = 4;
 
         int tex_id = wall_type - 1;
         if (tex_id < 0) tex_id = 0;
         if (tex_id >= NUM_TEX) tex_id = 0;
 
-        /* Draw ceiling */
-        attrset(COLOR_PAIR(ceil_pair));
-        for (int y = 0; y < draw_start; y++)
-            mvaddstr(y, x, " ");
+        /* Precompute tex_y step for this column (no per-pixel division) */
+        int tex_step_fp = (TEX_H * FP_SCALE) / wall_h;
+        int tex_y_fp = (draw_start - rows / 2 + wall_h / 2) * tex_step_fp;
 
-        /* Draw wall slice with texture mapping */
-        for (int y = draw_start; y <= draw_end; y++) {
-            double tex_y_d = (double)(y - rows / 2 + wall_h / 2)
-                           * TEX_H / wall_h;
-            int tex_y = (int)tex_y_d;
-            if (tex_y < 0) tex_y = 0;
-            if (tex_y >= TEX_H) tex_y = TEX_H - 1;
+        /* Draw ceiling & floor as single batched lines */
+        for (int x = col_start; x <= col_end; x++) {
+            attrset(COLOR_PAIR(ceil_pair));
+            if (draw_start > 0)
+                mvvline(0, x, ' ', draw_start);
 
-            int xt = tex_xterm[tex_id][tex_y][tex_x];
-            int pair = xterm_pair[xt];
-            if (pair < 0) pair = ceil_pair;
+            /* Draw wall slice */
+            int y_tex = tex_y_fp;
+            for (int y = draw_start; y <= draw_end; y++) {
+                int tex_y = y_tex >> FP_SHIFT;
+                if (tex_y < 0) tex_y = 0;
+                if (tex_y >= TEX_H) tex_y = TEX_H - 1;
 
-            /* Fade the top/bottom few texel rows */
-            int fade_dist = TEX_H / 64;
-            int fade_extra = 0;
-            if (tex_y < fade_dist) {
-                fade_extra = (fade_dist - 1 - tex_y) * 4 / (fade_dist - 1);
-                pair = ceil_pair;
-            } else if (tex_y >= TEX_H - fade_dist) {
-                fade_extra = (tex_y - (TEX_H - fade_dist)) * 4 / (fade_dist - 1);
-                pair = floor_pair;
+                int xt = tex_xterm[tex_id][tex_y][tex_x];
+                int pair = xterm_pair[xt];
+                if (pair < 0) pair = ceil_pair;
+
+                int fade_extra = 0;
+                if (tex_y < 4) {
+                    fade_extra = (3 - tex_y) * 4 / 3;
+                    pair = ceil_pair;
+                } else if (tex_y >= TEX_H - 4) {
+                    fade_extra = (tex_y - (TEX_H - 4)) * 4 / 3;
+                    pair = floor_pair;
+                }
+                int s = shade + fade_extra;
+                if (s > 4) s = 4;
+
+                attrset(COLOR_PAIR(pair));
+                mvaddstr(y, x, SHADES[s]);
+                y_tex += tex_step_fp;
             }
 
-            int s = shade + fade_extra;
-            if (s > 4) s = 4;
-            attrset(COLOR_PAIR(pair));
-            mvaddstr(y, x, SHADES[s]);
+            /* Floor */
+            if (draw_end + 1 < rows) {
+                attrset(COLOR_PAIR(floor_pair));
+                mvvline(draw_end + 1, x, ' ', rows - draw_end - 1);
+            }
         }
-
-        /* Draw floor */
-        attrset(COLOR_PAIR(floor_pair));
-        for (int y = draw_end + 1; y < rows; y++)
-            mvaddstr(y, x, " ");
     }
 
     /* ── SPRITE RENDERING ──────────────────────────────────────── */
     if (num_sprites <= 0) return;
 
-    /* Inverse determinant for camera matrix */
-    double inv_det = 1.0 / (player.plane_x * player.dir_y - player.dir_x * player.plane_y);
+    double inv_det = 1.0 / (player.plane_x * player.dir_y
+                          - player.dir_x * player.plane_y);
 
-    /* Pre-filter: keep only sprites in front (ty > 0) and within 12 cells */
+    /* Pre-filter & collect visible sprites */
     int vis_idx[MAX_SPRITES];
     double vis_dist[MAX_SPRITES];
     int nvis = 0;
@@ -612,24 +659,34 @@ void render_frame(void) {
     }
     if (nvis <= 0) return;
 
-    /* Sort visible sprites by distance (farthest first) */
-    for (int i = 1; i < nvis; i++)
-        for (int j = i; j > 0 && vis_dist[j] > vis_dist[j - 1]; j--) {
-            double td = vis_dist[j]; vis_dist[j] = vis_dist[j - 1]; vis_dist[j - 1] = td;
-            int ti = vis_idx[j]; vis_idx[j] = vis_idx[j - 1]; vis_idx[j - 1] = ti;
+    /* qsort by distance (farthest first) — shell sort for mixed sizes */
+    static int sort_buf[MAX_SPRITES];
+    if (nvis > 1) {
+        for (int i = 0; i < nvis; i++) sort_buf[i] = i;
+        if (nvis < 20) {
+            for (int i = 1; i < nvis; i++)
+                for (int j = i; j > 0 && vis_dist[sort_buf[j]] > vis_dist[sort_buf[j-1]]; j--) {
+                    int t = sort_buf[j]; sort_buf[j] = sort_buf[j-1]; sort_buf[j-1] = t;
+                }
+        } else {
+            for (int gap = nvis/2; gap > 0; gap /= 2)
+                for (int i = gap; i < nvis; i++)
+                    for (int j = i - gap; j >= 0 && vis_dist[sort_buf[j+gap]] > vis_dist[sort_buf[j]]; j -= gap) {
+                        int t = sort_buf[j]; sort_buf[j] = sort_buf[j+gap]; sort_buf[j+gap] = t;
+                    }
         }
+    }
 
-    /* Render each sprite as a billboard (always facing the camera) */
+    /* Render each sprite */
     for (int si = 0; si < nvis; si++) {
-        Sprite *sp = &sprites[vis_idx[si]];
+        int sp_idx = (nvis > 1) ? vis_idx[sort_buf[si]] : vis_idx[si];
+        Sprite *sp = &sprites[sp_idx];
         double rel_x = sp->x - player.x;
         double rel_y = sp->y - player.y;
 
-        /* Transform sprite position to camera space */
         double tx = inv_det * (player.dir_y * rel_x - player.dir_x * rel_y);
         double ty = inv_det * (-player.plane_y * rel_x + player.plane_x * rel_y);
 
-        /* Distance-based shade */
         int s_shade;
         if (ty < 1.5) s_shade = 0;
         else if (ty < 2.5) s_shade = 1;
@@ -637,7 +694,6 @@ void render_frame(void) {
         else if (ty < 7.0) s_shade = 3;
         else s_shade = 4;
 
-        /* Screen position and projected size */
         int screen_x = (int)((cols / 2) * (1.0 + tx / ty));
         int sprite_h = abs((int)(rows / ty)) / 2;
         if (sprite_h < 1) sprite_h = 1;
@@ -646,66 +702,73 @@ void render_frame(void) {
             sprite_h = sprite_h * 3 / 2;
             sprite_w = sprite_w * 3 / 2;
         }
-      int is_enemy = (sp->type == SPRITE_ENEMY);
-      if (is_enemy) {
-             sprite_h = sprite_h * 5 / 4;
-             sprite_w = sprite_w * 5 / 4;
-             if (sp->level == ENEMY_BOSS) {
-                 sprite_h = sprite_h * 6 / 5;
-                 sprite_w = sprite_w * 6 / 5;
-             }
-         }
+        int is_enemy = (sp->type == SPRITE_ENEMY);
+        if (is_enemy) {
+            sprite_h = sprite_h * 5 / 4;
+            sprite_w = sprite_w * 5 / 4;
+            if (sp->level == ENEMY_BOSS) {
+                sprite_h = sprite_h * 6 / 5;
+                sprite_w = sprite_w * 6 / 5;
+            }
+        }
 
-           /* Vertical offset from z value:
-            z=0   → centre at floor line (rows/2 + sprite_h/2)
-            z=0.5 → centre at eye level  (rows/2)               */
-          int v_shift = (int)((0.5 - sp->z) * sprite_h);
-          int center_y = rows / 2 + v_shift;
-          int orig_start_y = center_y - sprite_h / 2;
-          int orig_end_y = orig_start_y + sprite_h - 1;
-          if (orig_start_y >= rows || orig_end_y < 0) continue;
-          int draw_start_y = orig_start_y < 0 ? 0 : orig_start_y;
-          int draw_end_y = orig_end_y >= rows ? rows - 1 : orig_end_y;
+        int v_shift = (int)((0.5 - sp->z) * sprite_h);
+        int center_y = rows / 2 + v_shift;
+        int orig_start_y = center_y - sprite_h / 2;
+        int orig_end_y = orig_start_y + sprite_h - 1;
+        if (orig_start_y >= rows || orig_end_y < 0) continue;
+        int draw_start_y = orig_start_y < 0 ? 0 : orig_start_y;
+        int draw_end_y = orig_end_y >= rows ? rows - 1 : orig_end_y;
 
-          int orig_start_x = -sprite_w / 2 + screen_x;
-          int orig_end_x = orig_start_x + sprite_w - 1;
-          if (orig_start_x >= cols || orig_end_x < 0) continue;
-          int draw_start_x = orig_start_x < 0 ? 0 : orig_start_x;
-          int draw_end_x = orig_end_x >= cols ? cols - 1 : orig_end_x;
+        int orig_start_x = -sprite_w / 2 + screen_x;
+        int orig_end_x = orig_start_x + sprite_w - 1;
+        if (orig_start_x >= cols || orig_end_x < 0) continue;
+        int draw_start_x = orig_start_x < 0 ? 0 : orig_start_x;
+        int draw_end_x = orig_end_x >= cols ? cols - 1 : orig_end_x;
 
-          int tex_w = is_enemy ? SKELE_W : SPRITE_W;
-          int tex_h = is_enemy ? SKELE_H : SPRITE_H;
+        int tex_w = is_enemy ? SKELE_W : SPRITE_W;
+        int tex_h = is_enemy ? SKELE_H : SPRITE_H;
 
-          /* Draw the sprite column by column, pixel by pixel */
+        /* Precompute texture step per pixel (no per-pixel division) */
+        int tex_step_x_fp = (tex_w * FP_SCALE) / sprite_w;
+        int tex_step_y_fp = (tex_h * FP_SCALE) / sprite_h;
+
         for (int col = draw_start_x; col <= draw_end_x; col++) {
-            int tex_x = (col - orig_start_x) * tex_w / sprite_w;
+            int tex_x = ((col - orig_start_x) * tex_step_x_fp) >> FP_SHIFT;
             if (tex_x < 0) tex_x = 0;
             if (tex_x >= tex_w) tex_x = tex_w - 1;
             /* Occlusion check — skip if behind a wall */
-            if (ty >= perp_buf[col]) continue;
+            if (ty >= (double)perp_buf_fp[col] / FP_SCALE) continue;
+
+            /* Precompute tex_y base for this column */
+            int tex_y_fp = (draw_start_y - orig_start_y) * tex_step_y_fp;
+            const char *shade_str = SHADES[s_shade];
 
             for (int row = draw_start_y; row <= draw_end_y; row++) {
-                 int tex_y = (row - orig_start_y) * tex_h / sprite_h;
-                 if (tex_y < 0) tex_y = 0;
-                 if (tex_y >= tex_h) tex_y = tex_h - 1;
-                int xt;
-                  if (is_enemy) {
-                      int si = enemy_sprite_idx[sp->level];
-                      int ri = enemy_color_ramp_idx[sp->level];
-                      int grey = enemy_sprite_ptrs[si][tex_y * SKELE_W + tex_x];
-                      if (grey == 0) continue;
-                      /* Even levels render 1 shade darker */
-                      int dl = enemy_info[sp->level].level;
-                      if (dl > 0 && dl % 2 == 0) grey = grey > 1 ? grey - 1 : 1;
-                      xt = enemy_profile_colors[ri][grey];
-                  } else xt = sprite_tex[sp->type][tex_y][tex_x];
-                 if (xt < 0) continue;  /* transparent pixel */
+                int tex_y = tex_y_fp >> FP_SHIFT;
+                if (tex_y < 0) tex_y = 0;
+                if (tex_y >= tex_h) tex_y = tex_h - 1;
 
-                 int pair = xterm_pair[xt];
-                 if (pair < 0) pair = ceil_pair;
-                 attrset(COLOR_PAIR(pair));
-                 mvaddstr(row, col, SHADES[s_shade]);
-             }
+                int xt;
+                if (is_enemy) {
+                    int si = enemy_sprite_idx[sp->level];
+                    int ri = enemy_color_ramp_idx[sp->level];
+                    int grey = enemy_sprite_ptrs[si][tex_y * SKELE_W + tex_x];
+                    if (grey == 0) { tex_y_fp += tex_step_y_fp; continue; }
+                    int dl = enemy_info[sp->level].level;
+                    if (dl > 0 && dl % 2 == 0) grey = grey > 1 ? grey - 1 : 1;
+                    xt = enemy_profile_colors[ri][grey];
+                } else {
+                    xt = sprite_tex[sp->type][tex_y][tex_x];
+                }
+                if (xt < 0) { tex_y_fp += tex_step_y_fp; continue; }
+
+                int pair = xterm_pair[xt];
+                if (pair < 0) pair = ceil_pair;
+                attrset(COLOR_PAIR(pair));
+                mvaddstr(row, col, shade_str);
+                tex_y_fp += tex_step_y_fp;
+            }
         }
     }
 }
