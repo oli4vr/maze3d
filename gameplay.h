@@ -64,6 +64,7 @@ enum {
 extern int inventory[NUM_ITEM_TYPES];
 extern const consumable item_defs[NUM_ITEM_TYPES];
 extern int sprite_to_item_map[NUM_SPRITE_TYPES];
+extern int dbg_inv[NUM_ITEM_TYPES];
 
 void use_item(int item_id);
 
@@ -123,6 +124,7 @@ enum {
 extern const char *stat_names[NUM_STATS];
 extern int p_upgrade_cnt[NUM_STATS];
 void upgrade_stat(int stat_idx);
+int  upgrade_cost(int stat_idx);
 
 /* ── Lookup helpers (used by both modes) ──────────────────────── */
 const char *get_enemy_name_at(int fx, int fy);

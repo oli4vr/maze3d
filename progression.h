@@ -30,10 +30,10 @@
 #define MSTAT(att,def,tgh,end,sta,lck,bhp,souls) \
     { att, def, tgh, end, sta, lck, bhp, souls }
 
-/* All enemies have lck=0.  The old system let enemy luck grow
-   to 30+, which shrank the player's rand() range to 1 and made
-   high-tier enemies literally unhittable.  Luck is removed from
-   all non-boss enemies entirely.                               */
+/* All enemies have lck=0, except cultists (luck 7-24) and the boss
+   (luck 5).  The old system let enemy luck grow to 30+, which shrank
+   the player's rand() range to 1 and made high-tier enemies literally
+   unhittable.  Luck is removed from skeletons and orcs entirely.     */
 
 /* ── Skeleton family (levels 1-12) ────────────────────────────── */
 /* All-rounder, moderate stats.  ATK increased ~20% from original
@@ -76,25 +76,25 @@
    A race: kill them in 1-2 rounds or face devastating damage.
    Introduced from level 10.  ATK restored to original values
    (was reduced 20% after overzealous balance pass).              */
-#define CULTIST_L1  MSTAT(18, 4, 0, 0, 0, 0, 22, 10)
-#define CULTIST_L2  MSTAT(22, 7, 1, 0, 0, 0, 28, 13)
-#define CULTIST_L3  MSTAT(26,10, 2, 0, 0, 0, 35, 16)
-#define CULTIST_L4  MSTAT(40,13, 3, 0, 0, 0, 40, 20)
-#define CULTIST_L5  MSTAT(44,16, 4, 0, 0, 0, 45, 25)
-#define CULTIST_L6  MSTAT(48,19, 5, 0, 0, 0, 51, 28)
-#define CULTIST_L7  MSTAT(52,22, 6, 0, 0, 0, 57, 31)
-#define CULTIST_L8  MSTAT(56,25, 7, 0, 0, 0, 63, 34)
-#define CULTIST_L9  MSTAT(60,28, 8, 0, 0, 0, 69, 37)
-#define CULTIST_L10 MSTAT(64,31, 9, 0, 0, 0, 80, 40)
-#define CULTIST_L11 MSTAT(68,34,10, 0, 0, 0, 96, 43)
-#define CULTIST_L12 MSTAT(72,37,11, 0, 0, 0,110, 47)
+#define CULTIST_L1  MSTAT(18, 4, 0, 0, 0,  7, 22, 10)
+#define CULTIST_L2  MSTAT(22, 7, 1, 0, 0,  8, 28, 13)
+#define CULTIST_L3  MSTAT(26,10, 2, 0, 0,  9, 35, 16)
+#define CULTIST_L4  MSTAT(40,13, 3, 0, 0, 10, 40, 20)
+#define CULTIST_L5  MSTAT(44,16, 4, 0, 0, 11, 45, 25)
+#define CULTIST_L6  MSTAT(48,19, 5, 0, 0, 12, 51, 28)
+#define CULTIST_L7  MSTAT(52,22, 6, 0, 0, 14, 57, 31)
+#define CULTIST_L8  MSTAT(56,25, 7, 0, 0, 16, 63, 34)
+#define CULTIST_L9  MSTAT(60,28, 8, 0, 0, 18, 69, 37)
+#define CULTIST_L10 MSTAT(64,31, 9, 0, 0, 20, 80, 40)
+#define CULTIST_L11 MSTAT(68,34,10, 0, 0, 22, 96, 43)
+#define CULTIST_L12 MSTAT(72,37,11, 0, 0, 24,110, 47)
 
 /* ── Boss (Necromancer) ───────────────────────────────────────── */
 /* Spawns at BOSS_LEVEL.  DEF=40 gives the player a realistic hit
    chance.  ATK=55 (restored from earlier reduction).  With level
    bonus + TGH halving, the player must be well-prepared. 500 HP
    is a slog that demands prep and luck.                           */
-#define BOSS_STAT    MSTAT(55, 40, 18, 0, 0, 5, 600, 150)
+#define BOSS_STAT    MSTAT(90, 50, 50, 0, 0, 35, 240, 150)
 #define BOSS_LEVEL   40
 #define BOSS_BONUS   5000
 
@@ -131,16 +131,17 @@
 #define DROP_BASE_CHANCE      25   /* base % chance an enemy drops any item */
 #define DROP_CHANCE_PER_LUCK   1   /* +1% per LCK point */
 #define DROP_CHANCE_MAX       50   /* cap */
-#define DROP_HEALING_PCT      40   /* % of drops that are healing potion */
-#define DROP_WATER_PCT        40   /* % of drops that are water bottle */
-#define DROP_SPIRIT_PCT        5   /* % of drops that are Spirit 'o Luck */
-#define DROP_ANTIDOTE_PCT     15   /* % of drops that are Antidote (L9+) */
+#define DROP_HEALING_PCT      35   /* % of drops that are healing potion */
+#define DROP_WATER_PCT        20   /* % of drops that are water bottle */
+#define DROP_SPIRIT_PCT       20   /* % of drops that are Spirit 'o Luck */
+#define DROP_ANTIDOTE_PCT     25   /* % of drops that are Antidote (L9+) */
 #define DROP_ANTIDOTE_MIN_LVL  9   /* minimum level for Antidote drops */
 
 /* ── Maze builder spawn rates ────────────────────────────────── */
 /* Bit-test thresholds for generate_maze(); each run per empty cell */
-#define SPAWN_POTION_MASK       0x03  /* ((r>>16)&3) == 0 — 1/4 chance */
+#define SPAWN_POTION_MASK       0x0F  /* ((r>>16)&15) < 5 — 5/16 (was 1/4 = +25% more potions) */
 #define SPAWN_POTION_SHIFT      16
+#define SPAWN_POTION_LIMIT      5
 #define SPAWN_POTION_MASK2      0x03  /* ((r>>1)&3) == 0 — 1/4 chance */
 #define SPAWN_POTION_SHIFT2      1
 #define SPAWN_WATER_MOD          9    /* (r % 9) == 0 check (1/9) */
@@ -171,5 +172,22 @@
    L15-17:5 L18-20:6 L21-23:7 L24-26:8 L27-29:9
    L30-32:10 L33-35:11 L36-38:12 L39-40:13                    */
 #define ENEMY_ATK_LEVEL_BONUS(lvl)  ((lvl) / 3)
+
+/* ── Cultist attack styles ──────────────────────────────────────────── */
+/* Counter-attack: three-way split among normal (physical no poison),
+   magic (bypasses TGH), and poison (physical + poisons player).
+   The remainder round out to 100.                                    */
+#define CULTIST_NORMAL_PCT    33
+#define CULTIST_MAGIC_PCT     33
+
+/* Death-strike poison chance for cultists.                          */
+#define CULTIST_DEATH_POISON_PCT 33
+
+/* ── Magic misfire ────────────────────────────────────────────────── */
+/* When a cultist or boss casts magic, it may fizzle:
+   misfire = BASE + player_luck - enemy_luck, clamped to [0, MAX].
+   Gives player Luck a meaningful defensive use vs magic enemies.    */
+#define MAGIC_MISFIRE_BASE    25
+#define MAGIC_MISFIRE_MAX     75
 
 #endif

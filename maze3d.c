@@ -383,9 +383,7 @@ static void open_upgrade_nc(void) {
                       si == STAT_ATTACK    ? p_attack :
                       si == STAT_ENDURANCE ? p_endurance :
                       si == STAT_STAMINA   ? p_stamina : p_luck;
-            int cost = si == STAT_DEFENSE
-                       ? SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE]
-                       : SOULS_UPGRADE_COST + p_upgrade_cnt[si];
+            int cost = upgrade_cost(si);
             char line[48];
             snprintf(line, sizeof(line), "  %c%-12s %3d [%d]",
                      selected == i ? '>' : ' ',
@@ -411,9 +409,7 @@ static void open_upgrade_nc(void) {
         /* Hint */
         attrset(COLOR_PAIR(panel_pair));
         int sel_si = selected < NUM_ORDER ? ORDER[selected] : -1;
-        int sel_cost = sel_si == STAT_DEFENSE
-                       ? SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE]
-                       : (sel_si >= 0 ? SOULS_UPGRADE_COST + p_upgrade_cnt[sel_si] : 0);
+        int sel_cost = sel_si >= 0 ? upgrade_cost(sel_si) : 0;
         mvaddstr(by + box_h - 2, bx + 2,
                  selected < NUM_ORDER && inventory[ITEM_SOULS] >= sel_cost
                  ? "[Space] upgrade   [TAB] close"
@@ -1023,6 +1019,55 @@ static void help_overlay_nc(void) {
     }
 }
 
+/* ── Victory overlay (ncurses) ──────────────────────────────────── */
+
+static void victory_overlay_nc(void) {
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+
+    int bw = 44;
+    int bh = 12;
+    int bx = (cols - bw) / 2;
+    int by = (rows - bh) / 2;
+    if (bx < 0) bx = 0;
+    if (by < 0) by = 0;
+
+    attrset(COLOR_PAIR(panel_pair));
+    for (int y = by + 1; y < by + bh - 1; y++)
+        for (int x = bx + 1; x < bx + bw - 1; x++)
+            mvaddch(y, x, ' ');
+
+    attrset(COLOR_PAIR(panel_pair) | A_BOLD);
+    mvaddch(by, bx, ACS_ULCORNER);
+    mvaddch(by, bx + bw - 1, ACS_URCORNER);
+    mvaddch(by + bh - 1, bx, ACS_LLCORNER);
+    mvaddch(by + bh - 1, bx + bw - 1, ACS_LRCORNER);
+    mvwhline(stdscr, by, bx + 1, ACS_HLINE, bw - 2);
+    mvwhline(stdscr, by + bh - 1, bx + 1, ACS_HLINE, bw - 2);
+    for (int y = by + 1; y < by + bh - 1; y++) {
+        mvaddch(y, bx, ACS_VLINE);
+        mvaddch(y, bx + bw - 1, ACS_VLINE);
+    }
+
+    mvaddstr(by + 2, bx + (bw - 16) / 2, "HARK! VICTORY!");
+    mvaddstr(by + 3, bx + (bw - 35) / 2, "Thou hast defeated the Necromancer!");
+
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Victory at level %d", p_level);
+    mvaddstr(by + 5, bx + (bw - strlen(buf)) / 2, buf);
+    snprintf(buf, sizeof(buf), "Steps trod: %d", p_steps);
+    mvaddstr(by + 6, bx + (bw - strlen(buf)) / 2, buf);
+    snprintf(buf, sizeof(buf), "Score: %d", get_current_score());
+    mvaddstr(by + 7, bx + (bw - strlen(buf)) / 2, buf);
+
+    attrset(COLOR_PAIR(panel_pair));
+    const char *prompt = "[TAB] continue";
+    mvaddstr(by + bh - 2, bx + (bw - strlen(prompt)) / 2, prompt);
+
+    refresh();
+    while (getch() != '\t') {}
+}
+
 /* ── Death overlay (ncurses) ────────────────────────────────────── */
 /* Returns 1 if player chose restart, 0 to quit.                     */
 
@@ -1124,17 +1169,17 @@ static int death_overlay_nc(void) {
 
 static void usage(void) {
     printf("Usage: maze3d [--demo] [--text] [--level N] [--atk N] [--def N]\n");
-    printf("             [--tgh N] [--sta N] [--end N] [--lck N]\n");
+    printf("             [--sta N] [--end N] [--lck N] [--inv h,w,a,l]\n");
     printf("             [--test-enemy N]\n");
     printf("  --demo       Auto-pilot screensaver (no RPG, no levels)\n");
     printf("  --text       Run in text-based debug mode (no ncurses)\n");
     printf("  --level N    Start at game level N\n");
     printf("  --atk  N     Override base attack stat\n");
-    printf("  --def  N     Override base defense stat\n");
-    printf("  --tgh  N     Override base toughness stat\n");
+    printf("  --def  N     Override base defense AND toughness stat\n");
     printf("  --sta  N     Override base stamina stat\n");
     printf("  --end  N     Override base endurance stat\n");
     printf("  --lck  N     Override base luck stat\n");
+    printf("  --inv  N,N,N,N  Starting inventory: health,water,antidote,luck counts\n");
     printf("  --test-enemy N  Place enemy type N in front for combat testing\n");
 }
 
@@ -1152,15 +1197,28 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "--atk") == 0 && i + 1 < argc) {
             dbg_stats[0] = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--def") == 0 && i + 1 < argc) {
-            dbg_stats[1] = atoi(argv[++i]);
-        } else if (strcmp(argv[i], "--tgh") == 0 && i + 1 < argc) {
-            dbg_stats[2] = atoi(argv[++i]);
+            int val = atoi(argv[++i]);
+            dbg_stats[1] = val;
+            dbg_stats[2] = val;
         } else if (strcmp(argv[i], "--sta") == 0 && i + 1 < argc) {
             dbg_stats[3] = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--end") == 0 && i + 1 < argc) {
             dbg_stats[4] = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--lck") == 0 && i + 1 < argc) {
             dbg_stats[5] = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--inv") == 0 && i + 1 < argc) {
+            const char *p = argv[++i];
+            int counts[4] = {0};
+            for (int n = 0; n < 4 && *p; n++) {
+                while (*p && (*p < '0' || *p > '9')) p++;
+                if (*p) counts[n] = atoi(p);
+                while (*p && *p >= '0' && *p <= '9') p++;
+            }
+            memset(dbg_inv, 0, sizeof(dbg_inv));
+            dbg_inv[ITEM_HEALING_POTION]  = counts[0];
+            dbg_inv[ITEM_BOTTLE_OF_WATER] = counts[1];
+            dbg_inv[ITEM_ANTIDOTE]        = counts[2];
+            dbg_inv[ITEM_SPIRIT_LUCK]     = counts[3];
         } else if (strcmp(argv[i], "--test-enemy") == 0 && i + 1 < argc) {
             dbg_test_enemy = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -1199,6 +1257,10 @@ int main(int argc, char **argv) {
             for (int i = 0; i < 6; i++)
                 if (dbg_stats[i] > 0) *stat_ptrs[i] = dbg_stats[i];
             recalc_player_max();
+            p_health = p_max_health;
+            p_water  = p_max_water;
+            for (int i = 0; i < NUM_ITEM_TYPES; i++)
+                if (dbg_inv[i] > 0) inventory[i] = dbg_inv[i];
         }
 
         while (running) {
@@ -1221,19 +1283,20 @@ int main(int argc, char **argv) {
                 break;
             }
             if (r == 2) {
-                endwin();
-                printf("\n");
-                printf("  ╔══════════════════════════════════════════╗\n");
-                printf("  ║                                        ║\n");
-                printf("  ║   HARK! VICTORY!                       ║\n");
-                printf("  ║   Thou hast defeated the Necromancer!  ║\n");
-                printf("  ║                                        ║\n");
-                printf("  ╚══════════════════════════════════════════╝\n");
-                printf("\n");
-                printf("  Victory achieved at level %d!\n", p_level);
-                printf("  Total steps trod: %d\n", p_steps);
-                printf("  Score: %d\n", get_current_score());
-                return 0;
+                victory_overlay_nc();
+                /* Handle high scores then game-over screen */
+                int score = get_current_score();
+                if (is_high_score(score)) {
+                    char name[HS_NAME_LEN] = {0};
+                    name_input_nc(name, HS_NAME_LEN);
+                    if (name[0])
+                        add_high_score(name, score, p_level, p_steps);
+                }
+                if (!death_overlay_nc()) {
+                    show_hs_overlay_nc(0);
+                    goto done;
+                }
+                break;
             }
             p_level++;
             p_score += 50;

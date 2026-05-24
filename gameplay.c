@@ -37,6 +37,9 @@ double a_nx, a_ny, a_ndx, a_ndy, a_npx, a_npy;
 int drop_popup_item = -1;
 const char *drop_popup_name = NULL;
 
+/* ── Debug inventory override (set via --inv) ──────────────────── */
+int dbg_inv[NUM_ITEM_TYPES] = {0};
+
 /* ── Direction vectors ────────────────────────────────────────── */
 const double dir_vec[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};
 
@@ -135,13 +138,25 @@ void recalc_player_max(void) {
     p_max_water  = PLAYER_BASE_WATER  + (10 * p_endurance);
 }
 
+int upgrade_cost(int stat_idx) {
+    if (stat_idx == STAT_DEFENSE) {
+        int cost = (p_defense + p_toughness) >> 1;
+        return cost < SOULS_UPGRADE_COST ? SOULS_UPGRADE_COST : cost;
+    }
+    int current, base;
+    switch (stat_idx) {
+        case STAT_ATTACK:    current = p_attack;    base = PLAYER_BASE_ATTACK;    break;
+        case STAT_ENDURANCE: current = p_endurance; base = PLAYER_BASE_ENDURANCE; break;
+        case STAT_STAMINA:   current = p_stamina;   base = PLAYER_BASE_STAMINA;   break;
+        case STAT_LUCK:      current = p_luck;      base = PLAYER_BASE_LUCK;      break;
+        default: return 0;
+    }
+    return SOULS_UPGRADE_COST + (current - base);
+}
+
 void upgrade_stat(int stat_idx) {
     if (stat_idx < 0 || stat_idx >= NUM_STATS) return;
-    int cost = SOULS_UPGRADE_COST + p_upgrade_cnt[stat_idx];
-
-    /* Unified DEF uses combined upgrade count for cost */
-    if (stat_idx == STAT_DEFENSE)
-        cost = SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE];
+    int cost = upgrade_cost(stat_idx);
 
     if (inventory[ITEM_SOULS] < cost) return;
 
@@ -321,13 +336,18 @@ void attack_enemy(int fx, int fy) {
                 int e_atk = m->attack + ENEMY_ATK_LEVEL_BONUS(p_level);
                 int can_magic = (etype >= ENEMY_CULTIST_L1 && etype <= ENEMY_CULTIST_L12)
                                 || etype == ENEMY_BOSS;
+                int is_cultist = (etype >= ENEMY_CULTIST_L1 && etype <= ENEMY_CULTIST_L12);
                 if (can_magic && (rand() % 100) < 75) {
-                    int edmg = e_atk + (e_atk >> 2) * (rand() & 1);
-                    p_health -= edmg;
-                    log_msg("A dark spell strikes thee for %d damage!", edmg);
-                    /* Cultists may also poison on death strike */
-                    if (etype >= ENEMY_CULTIST_L1 && etype <= ENEMY_CULTIST_L12)
-                        p_poisoned = 1;
+                    int misfire = MAGIC_MISFIRE_BASE + eff_luck - m->luck;
+                    if (misfire < 0) misfire = 0;
+                    if (misfire > MAGIC_MISFIRE_MAX) misfire = MAGIC_MISFIRE_MAX;
+                    if ((rand() % 100) < misfire) {
+                        log_msg("Thy fortune holds — %s's death-spell avails naught!", ename);
+                    } else {
+                        int edmg = e_atk + (e_atk >> 2) * (rand() & 1);
+                        p_health -= edmg;
+                        log_msg("A dark spell strikes thee for %d damage!", edmg);
+                    }
                 } else {
                     int elck_mod = m->luck - eff_luck;
                     if (elck_mod < -3) elck_mod = -3;
@@ -339,12 +359,13 @@ void attack_enemy(int fx, int fy) {
                         if (edmg == 0) edmg = 1;
                         p_health -= edmg;
                         log_msg("It strikes thee for %d damage!", edmg);
-                        /* Cultists may also poison on death strike */
-                        if (etype >= ENEMY_CULTIST_L1 && etype <= ENEMY_CULTIST_L12)
-                            p_poisoned = 1;
                     } else {
                         log_msg("It misses thee!");
                     }
+                }
+                if (is_cultist && (rand() % 100) < CULTIST_DEATH_POISON_PCT) {
+                    p_poisoned = 1;
+                    log_msg("The cultist's dying curse doth poison thee!");
                 }
                 if (p_health < 0) p_health = 0;
                 /* Clear drop popup if player dies from death strike */
@@ -369,36 +390,73 @@ void attack_enemy(int fx, int fy) {
 
     /* --- Enemy counter-attacks (if still alive) --- */
     int e_atk = m->attack + ENEMY_ATK_LEVEL_BONUS(p_level);
-    int can_magic = (etype >= ENEMY_CULTIST_L1 && etype <= ENEMY_CULTIST_L12)
-                    || etype == ENEMY_BOSS;
     int is_cultist = (etype >= ENEMY_CULTIST_L1 && etype <= ENEMY_CULTIST_L12);
-    if (can_magic && ((rand() % 100) < (10 + m->luck))) {
-        int edmg = e_atk + (e_atk >> 2) * (rand() & 1);
-        p_health -= edmg;
-        log_msg("%s hurls a dark spell for %d damage", ename, edmg);
-        /* Cultists may poison on magical counter */
-        if (is_cultist && (rand() & 1)) {
-            p_poisoned = 1;
-            log_msg("The foul magic doth poison thee!");
-        }
-    } else {
-        int elck_mod = m->luck - eff_luck;
-        if (elck_mod < -3) elck_mod = -3;
-        if (elck_mod > 3) elck_mod = 3;
-        int etohit = e_atk + (rand() % 9) + elck_mod;
-        if (etohit >= eff_def) {
-            int edmg = e_atk - (p_toughness >> 1);
-            if (edmg < 0) edmg = 0;
-            if (edmg == 0) edmg = 1;
-            p_health -= edmg;
-            log_msg("%s strikes thee for %d damage", ename, edmg);
-            /* Cultist poison stab */
-            if (is_cultist && (rand() & 1)) {
-                p_poisoned = 1;
-                log_msg("The cultist's blade doth poison thee!");
+    if (is_cultist) {
+        /* Cultist: 3-way split — normal / magic / poison */
+        int atk_type = rand() % 100;
+        if (atk_type < CULTIST_MAGIC_PCT) {
+            /* Magic attack (ATK ranges 18-72, ignores TGH) */
+            int misfire = MAGIC_MISFIRE_BASE + eff_luck - m->luck;
+            if (misfire < 0) misfire = 0;
+            if (misfire > MAGIC_MISFIRE_MAX) misfire = MAGIC_MISFIRE_MAX;
+            if ((rand() % 100) < misfire) {
+                log_msg("%s's dark spell fizzles — fortune smiles upon thee!", ename);
+            } else {
+                int edmg = e_atk + (e_atk >> 2) * (rand() & 1);
+                p_health -= edmg;
+                log_msg("%s hurls a dark spell for %d damage", ename, edmg);
             }
         } else {
-            log_msg("%s assails thee, but misses", ename);
+            /* Physical attack (normal or poison) */
+            int is_poison = (atk_type >= CULTIST_MAGIC_PCT + CULTIST_NORMAL_PCT);
+            int elck_mod = m->luck - eff_luck;
+            if (elck_mod < -3) elck_mod = -3;
+            if (elck_mod > 3) elck_mod = 3;
+            int etohit = e_atk + (rand() % 9) + elck_mod;
+            if (etohit >= eff_def) {
+                int edmg = e_atk - (p_toughness >> 1);
+                if (edmg < 0) edmg = 0;
+                if (edmg == 0) edmg = 1;
+                p_health -= edmg;
+                if (is_poison) {
+                    log_msg("%s's envenomed blade strikes thee for %d damage", ename, edmg);
+                    p_poisoned = 1;
+                    log_msg("The cultist's blade doth poison thee!");
+                } else {
+                    log_msg("%s strikes thee for %d damage", ename, edmg);
+                }
+            } else {
+                log_msg("%s assails thee, but misses", ename);
+            }
+        }
+    } else {
+        /* Boss: existing magic / physical split */
+        int can_magic = (etype == ENEMY_BOSS);
+        if (can_magic && ((rand() % 100) < (10 + m->luck))) {
+            int misfire = MAGIC_MISFIRE_BASE + eff_luck - m->luck;
+            if (misfire < 0) misfire = 0;
+            if (misfire > MAGIC_MISFIRE_MAX) misfire = MAGIC_MISFIRE_MAX;
+            if ((rand() % 100) < misfire) {
+                log_msg("%s's dark spell fizzles — fortune smiles upon thee!", ename);
+            } else {
+                int edmg = e_atk + (e_atk >> 2) * (rand() & 1);
+                p_health -= edmg;
+                log_msg("%s hurls a dark spell for %d damage", ename, edmg);
+            }
+        } else {
+            int elck_mod = m->luck - eff_luck;
+            if (elck_mod < -3) elck_mod = -3;
+            if (elck_mod > 3) elck_mod = 3;
+            int etohit = e_atk + (rand() % 9) + elck_mod;
+            if (etohit >= eff_def) {
+                int edmg = e_atk - (p_toughness >> 1);
+                if (edmg < 0) edmg = 0;
+                if (edmg == 0) edmg = 1;
+                p_health -= edmg;
+                log_msg("%s strikes thee for %d damage", ename, edmg);
+            } else {
+                log_msg("%s assails thee, but misses", ename);
+            }
         }
     }
     if (p_health < 0) p_health = 0;
@@ -476,8 +534,8 @@ void generate_maze(int steps) {
            if (abs(mx - MIDDLE_W) <= 2 && abs(my - MIDDLE_H) <= 2) continue;
 
            int r = rand();
-              /* Potion: ~6% overall (1/4 × 1/4 = 1/16, then sub-type roll) */
-              if (((r >> SPAWN_POTION_SHIFT) & SPAWN_POTION_MASK) == 0
+               /* Potion: ~7.8% overall (5/16 × 1/4 = 5/64, then sub-type roll) */
+               if (((r >> SPAWN_POTION_SHIFT) & SPAWN_POTION_MASK) < SPAWN_POTION_LIMIT
                   && ((r >> SPAWN_POTION_SHIFT2) & SPAWN_POTION_MASK2) == 0) {
                  int sp_type;
                  if ((rand() % 16) == 0) {

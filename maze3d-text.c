@@ -4,7 +4,7 @@
  * with text descriptions.  Useful for debugging and automated testing.
  * Invoked via ./maze3d --text.
  *
- * CLI: --level N --atk N --def N --tgh N --sta N --end N --lck N
+ * CLI: --level N --atk N --def N --sta N --end N --lck N --inv N,N,N,N
  * Commands: f=forward b=backward l=left r=right a=attack/use q=quit  */
 
 #include "gameplay.h"
@@ -251,9 +251,7 @@ static void open_upgrade_txt(void) {
                       si == STAT_ATTACK    ? p_attack :
                       si == STAT_ENDURANCE ? p_endurance :
                       si == STAT_STAMINA   ? p_stamina : p_luck;
-            int cost = si == STAT_DEFENSE
-                       ? SOULS_UPGRADE_COST + p_upgrade_cnt[STAT_DEFENSE]
-                       : SOULS_UPGRADE_COST + p_upgrade_cnt[si];
+            int cost = upgrade_cost(si);
             printf("  %c%-12s %3d [%d]%s\n",
                    i == selected ? '>' : ' ',
                    stat_names[si], val, cost,
@@ -452,6 +450,8 @@ void run_text_mode(int start_level, int start_stats[6], int test_enemy) {
         recalc_player_max();
         p_health = p_max_health;
         p_water  = p_max_water;
+        for (int i = 0; i < NUM_ITEM_TYPES; i++)
+            if (dbg_inv[i] > 0) inventory[i] = dbg_inv[i];
         if (start_level > 1) p_level = start_level;
 
         while (running) {
