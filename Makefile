@@ -55,7 +55,7 @@ win: $(PDCURSES_LIB)
 		$(PDCURSES_LIB) -lm -lwinmm
 
 # ── Distribution packages ──────────────────────────────────────────
-VERSION := $(shell git describe --tags --dirty 2>/dev/null || echo "0.1")
+VERSION := $(shell git describe --tags --dirty 2>/dev/null | sed 's/^v//; s/-/./g' || echo "0.1")
 ARCH   := $(shell dpkg --print-architecture 2>/dev/null || echo "amd64")
 
 deb: maze3d
